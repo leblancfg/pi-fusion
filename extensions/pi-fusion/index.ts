@@ -300,6 +300,7 @@ function buildSharedDiscoveryContext(result: WorkerResult): string {
 
 export default function piFusion(pi: ExtensionAPI): void {
   let settings: FusionSettings = { ...DEFAULT_SETTINGS };
+  let armedForNextTurn = false;
 
   pi.registerFlag("fusion-disabled", {
     description: "Disable pi-fusion on startup",
@@ -437,16 +438,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     if (!settings.enabled && ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion off");
   });
 
-  pi.on("input", async (event, ctx) => {
-    const bypassReason = shouldBypassFusion({
-      enabled: settings.enabled,
-      text: event.text,
-      source: event.source,
-      streamingBehavior: event.streamingBehavior,
-      isIdle: ctx.isIdle(),
-    });
-    if (bypassReason) return { action: "continue" as const };
-
+  async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<string | undefined> {
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
     const currentModel = currentModelSpec(ctx);
     const workerModel = settings.workerModel ?? currentModel;
@@ -462,7 +454,7 @@ export default function piFusion(pi: ExtensionAPI): void {
 
     try {
       const rewritePromise = runWorker({
-        prompt: buildRewritePrompt({ task: event.text, recentContext, maxWorkers: settings.workerCount }),
+        prompt: buildRewritePrompt({ task, recentContext, maxWorkers: settings.workerCount }),
         cwd: ctx.cwd,
         index: 0,
         lens: "rewrite",
@@ -474,7 +466,7 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       activePanel?.update(0, { status: "running" });
       const discoveryResult = await runWorker({
-        prompt: buildDiscoveryPrompt({ task: event.text, recentContext, cwd: ctx.cwd }),
+        prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
         cwd: ctx.cwd,
         index: 0,
         lens: "discovery",
@@ -489,7 +481,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       activePanel = undefined;
 
       const rewriteResult = await rewritePromise;
-      const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, event.text);
+      const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
       const statusLines = promptVariations.map((_, index) => `⏳ worker ${index + 1}: ${getWorkerLens(index).name}`);
       setFusionStatus(ctx, statusLines);
       const workerStates: FusionLiveWorkerState[] = promptVariations.map((variation, index) => ({
@@ -507,7 +499,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       const workerPromises = promptVariations.map(async (variation, index) => {
         const lens = getWorkerLens(index);
         const prompt = buildWorkerPrompt({
-          task: event.text,
+          task,
           assignedPrompt: variation,
           recentContext,
           discoveryContext,
@@ -542,25 +534,43 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
       if (settings.synthesizerThinking) pi.setThinkingLevel(settings.synthesizerThinking);
 
-      const actorPrompt = buildActorPrompt({
-        originalText: event.text,
+      return buildActorPrompt({
+        originalText: task,
         discoveryContext,
         promptVariations,
         workerResults,
         workerOutputBytes: settings.workerOutputBytes,
-        imageCount: event.images?.length ?? 0,
+        imageCount,
       });
-
-      return { action: "transform" as const, text: actorPrompt, images: event.images };
     } catch (error) {
       if (ctx.hasUI) {
         const message = error instanceof Error ? error.message : String(error);
         ctx.ui.notify(`pi-fusion failed; continuing without fusion: ${message}`, "warning");
       }
-      return { action: "continue" as const };
+      return undefined;
     } finally {
       activePanel?.close();
       setFusionStatus(ctx, undefined);
     }
+  }
+
+  pi.on("input", async (event, ctx) => {
+    const bypassReason = shouldBypassFusion({
+      enabled: settings.enabled,
+      text: event.text,
+      source: event.source,
+      streamingBehavior: event.streamingBehavior,
+      isIdle: ctx.isIdle(),
+    });
+    armedForNextTurn = !bypassReason;
+    return { action: "continue" as const };
+  });
+
+  pi.on("before_agent_start", async (event, ctx) => {
+    if (!armedForNextTurn) return;
+    armedForNextTurn = false;
+    const bundle = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
+    if (!bundle) return;
+    return { systemPrompt: `${event.systemPrompt}\n\n${bundle}` };
   });
 }
