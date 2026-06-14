@@ -57,28 +57,25 @@ The rewrite step is a quick no-tool call using the worker model. It runs in para
 
 Run `/fusion` with no arguments to open a floating settings pane.
 
-From the pane you can tweak:
+The pane is condensed to five rows:
 
-- whether fusion is enabled (this applies immediately, even if you close the pane with `Esc`);
-- the number of worker planners;
-- the discovery model;
-- the discovery reasoning effort;
-- the worker model;
-- the worker reasoning effort;
-- the synthesizer/actor model;
-- the synthesizer/actor reasoning effort.
+- **Enabled** — toggled with `Space`; this applies immediately, even if you close the pane with `Esc`.
+- **Workers** — `←/→` adjusts the worker count; `Enter` opens a per-worker config drill-down.
+- **Discovery** — shown as `model · reasoning`; `Enter` opens the searchable model picker, `←/→` cycles reasoning effort.
+- **Synthesizer** — same as Discovery, for the synthesizer/actor turn.
+- **Save and close**.
+
+The per-worker drill-down lets you set a different model and reasoning effort for every worker. It also has an **All workers** row that sets the default each `#N` inherits when it has no explicit override. Model selection everywhere goes through the floating searchable picker (type to filter), so you never arrow-cycle through long model lists.
 
 Keyboard controls:
 
 ```text
-↑/↓       move
-←/→       adjust worker count or cycle model/reasoning values
-Enter     pick a model or save
+↑/↓       move (loops around at the edges)
+←/→       adjust worker count or cycle reasoning effort
+Enter     open model picker / per-worker config / save
 Space     toggle enabled (applies immediately)
-Esc       cancel (the enabled toggle still sticks)
+Esc       cancel (the enabled toggle still sticks) / back out of the drill-down
 ```
-
-Model rows also open a floating searchable picker with `Enter`.
 
 ## Live planner splits
 
@@ -128,7 +125,7 @@ When the per-column width would drop below ~24 characters, the panel automatical
 /fusion timeout 600000
 ```
 
-`/fusion model ...` is kept as an alias for `/fusion worker-model ...`.
+`/fusion model ...` is kept as an alias for `/fusion worker-model ...`. The `worker-model`/`worker-thinking` commands set the default for all workers; per-worker model and reasoning overrides are configured in the `/fusion` pane (Workers → configure).
 
 Settings changed through `/fusion` are persisted in the pi session via a custom entry.
 
