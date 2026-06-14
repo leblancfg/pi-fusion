@@ -27,7 +27,7 @@ Open pi and turn it on from the settings pane:
 
 The practical version: spend a little latency to buy fewer blind spots before the agent edits your repo. I built it as a test harness, not a grand theory of agency. It is useful when the problem is fuzzy enough that one model path may miss something.
 
-Name collision note: OpenRouter now has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is different. It does not call OpenRouter Fusion, pick a hidden model panel, or use a judge model. It runs local read-only pi subprocesses against your working tree and hands their notes to the actor model you already chose.
+N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is similar, but different. It does not call OpenRouter Fusion, pick a hidden model panel, or use a judge model. It runs local read-only pi subprocesses against your working tree and hands their notes to the actor model you already chose. You control all configuration of how this happens.
 
 ```mermaid
 flowchart LR
