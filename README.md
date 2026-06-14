@@ -82,6 +82,8 @@ Model rows also open a floating searchable picker with `Enter`.
 In TUI mode, each fused turn first shows a floating discovery pane by itself. When discovery finishes, the UI switches to worker vertical splits:
 
 - each worker gets its own column;
+- each worker header shows elapsed runtime and time since last update;
+- child process PIDs appear as lightweight events so you can see subprocesses start;
 - each worker column preloads the rewritten exploration prompt at the top;
 - reasoning streams into the `reasoning` section when the selected provider/model exposes thinking deltas;
 - assistant text streams into the `output` section;

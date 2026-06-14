@@ -121,15 +121,19 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
 
     const invocation = getPiInvocation(args);
     const exitCode = await new Promise<number | null>((resolve) => {
+      const liveEvents: string[] = [];
       const proc = spawn(invocation.command, invocation.args, {
         cwd: input.cwd,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
+      if (proc.pid) {
+        liveEvents.push(`pid ${proc.pid}`);
+        input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
+      }
 
       let stdoutBuffer = "";
       let timeout: NodeJS.Timeout | undefined;
-      const liveEvents: string[] = [];
 
       const processLine = (line: string) => {
         if (!line.trim()) return;

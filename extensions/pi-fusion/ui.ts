@@ -313,6 +313,8 @@ export interface FusionLiveWorkerState {
   lens: string;
   prompt?: string;
   status: "queued" | "running" | "done" | "failed" | "timed-out";
+  startedAt?: number;
+  updatedAt?: number;
   output: string;
   reasoning: string;
   events: string[];
@@ -367,8 +369,24 @@ function splitWidths(total: number, count: number): number[] {
   return widths;
 }
 
+function formatDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return minutes > 0 ? `${minutes}m${remainingSeconds.toString().padStart(2, "0")}s` : `${seconds}s`;
+}
+
+function formatWorkerTiming(worker: FusionLiveWorkerState): string {
+  const now = Date.now();
+  const parts: string[] = [];
+  if (worker.startedAt !== undefined) parts.push(`run ${formatDuration(now - worker.startedAt)}`);
+  if (worker.updatedAt !== undefined) parts.push(`last ${formatDuration(now - worker.updatedAt)}`);
+  return parts.length > 0 ? `(${parts.join(" • ")})` : "";
+}
+
 class FusionLivePanel {
   private closed = false;
+  private readonly renderTimer: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly tui: TUI,
@@ -376,12 +394,20 @@ class FusionLivePanel {
     private readonly workers: FusionLiveWorkerState[],
     private readonly title: string,
     private readonly done: () => void,
-  ) {}
+  ) {
+    this.renderTimer = setInterval(() => {
+      if (this.workers.some((worker) => worker.status === "running")) this.tui.requestRender();
+    }, 500);
+    this.renderTimer.unref?.();
+  }
 
   update(index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>): void {
     const worker = this.workers[index];
     if (!worker || this.closed) return;
     Object.assign(worker, patch);
+    const now = Date.now();
+    if (patch.status === "running" && worker.startedAt === undefined) worker.startedAt = now;
+    worker.updatedAt = now;
     worker.output = tailText(worker.output, 16_000);
     worker.reasoning = tailText(worker.reasoning, 16_000);
     worker.events = worker.events.slice(-20);
@@ -391,6 +417,7 @@ class FusionLivePanel {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    clearInterval(this.renderTimer);
     this.done();
   }
 
@@ -443,6 +470,7 @@ class FusionLivePanel {
   invalidate(): void {}
   dispose(): void {
     this.closed = true;
+    clearInterval(this.renderTimer);
   }
 
   private renderWorker(worker: FusionLiveWorkerState, width: number): string[] {
@@ -463,8 +491,10 @@ class FusionLivePanel {
     const eventText = worker.events.length > 0 ? `\n${worker.events.map((event) => `→ ${event}`).join("\n")}` : "";
     const outputLines = wrapPlainText(worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"), width, 10);
 
+    const timing = formatWorkerTiming(worker);
+
     return [
-      `${statusIcon} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}`,
+      `${statusIcon} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}${timing ? this.theme.fg("dim", ` ${timing}`) : ""}`,
       ...(promptLines.length > 0 ? [this.theme.fg("dim", "prompt"), ...promptLines, ""] : []),
       this.theme.fg("dim", "reasoning"),
       ...reasoningLines,
