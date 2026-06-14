@@ -11,8 +11,11 @@ import {
   collectRecentConversation,
   DEFAULT_SETTINGS,
   getWorkerLens,
+  normalizeWorkerSlots,
   parsePromptVariations,
   resolveSettings,
+  resolveWorkerModel,
+  resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
   type FusionFlags,
@@ -419,7 +422,10 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       if (command === "on") settings.enabled = true;
       else if (command === "off") settings.enabled = false;
-      else if (command === "workers") settings.workerCount = resolveSettings({ "fusion-workers": value }, settings).workerCount;
+      else if (command === "workers") {
+        settings.workerCount = resolveSettings({ "fusion-workers": value }, settings).workerCount;
+        settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
+      }
       else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
@@ -455,7 +461,6 @@ export default function piFusion(pi: ExtensionAPI): void {
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
     const currentModel = currentModelSpec(ctx);
     const workerModel = settings.workerModel ?? currentModel;
-    const workerThinking = settings.workerThinking ?? pi.getThinkingLevel();
     const discoveryModel = settings.discoveryModel ?? currentModel;
     const discoveryThinking = settings.discoveryThinking ?? pi.getThinkingLevel();
     const abort = new AbortController();
@@ -537,8 +542,8 @@ export default function piFusion(pi: ExtensionAPI): void {
           index,
           lens: lens.name,
           timeoutMs: settings.timeoutMs,
-          model: workerModel,
-          thinkingLevel: workerThinking,
+          model: resolveWorkerModel(settings, index, currentModel),
+          thinkingLevel: resolveWorkerThinking(settings, index, pi.getThinkingLevel()),
           tools: ["read", "grep", "find", "ls"],
           signal: abort.signal,
           onLiveUpdate: (workerIndex, patch) => activePanel?.update(workerIndex, patch),

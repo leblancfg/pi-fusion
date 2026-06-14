@@ -8,8 +8,11 @@ import {
   buildWorkerPrompt,
   collectRecentConversation,
   getWorkerLens,
+  normalizeWorkerSlots,
   parsePromptVariations,
   resolveSettings,
+  resolveWorkerModel,
+  resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
   type WorkerResult,
@@ -86,6 +89,30 @@ describe("settings", () => {
 
     assert.equal(settings.enabled, true);
     assert.equal(settings.workerCount, 2);
+  });
+
+  it("normalizes per-worker slots to match the worker count", () => {
+    const settings = resolveSettings(
+      { "fusion-workers": "3" },
+      { workers: [{ model: "openai/gpt-5", thinking: "high" }] },
+    );
+    assert.equal(settings.workers.length, 3);
+    assert.deepEqual(settings.workers[0], { model: "openai/gpt-5", thinking: "high" });
+    assert.deepEqual(settings.workers[1], { model: undefined, thinking: undefined });
+
+    assert.equal(normalizeWorkerSlots([{ model: "a", thinking: "low" }], 0).length, 1);
+    assert.equal(normalizeWorkerSlots(undefined, 4).length, 4);
+  });
+
+  it("resolves per-worker model/thinking with global then current fallbacks", () => {
+    const settings = resolveSettings(
+      { "fusion-worker-model": "anthropic/claude-sonnet-4-5", "fusion-worker-thinking": "medium" },
+      { workerCount: 2, workers: [{ model: "openai/gpt-5", thinking: "high" }, { model: undefined, thinking: undefined }] },
+    );
+    assert.equal(resolveWorkerModel(settings, 0, "current/model"), "openai/gpt-5");
+    assert.equal(resolveWorkerModel(settings, 1, "current/model"), "anthropic/claude-sonnet-4-5");
+    assert.equal(resolveWorkerThinking(settings, 0, "off"), "high");
+    assert.equal(resolveWorkerThinking(settings, 1, "off"), "medium");
   });
 });
 

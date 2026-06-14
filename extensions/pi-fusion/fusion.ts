@@ -5,9 +5,15 @@ export type FusionThinkingChoice = "current" | FusionThinkingLevel;
 
 export const THINKING_CHOICES: FusionThinkingChoice[] = ["current", "off", "minimal", "low", "medium", "high", "xhigh"];
 
+export interface FusionWorker {
+  model: string | undefined;
+  thinking: FusionThinkingLevel | undefined;
+}
+
 export interface FusionSettings {
   enabled: boolean;
   workerCount: number;
+  workers: FusionWorker[];
   workerOutputBytes: number;
   contextBytes: number;
   timeoutMs: number;
@@ -74,6 +80,7 @@ export interface BypassInput {
 export const DEFAULT_SETTINGS: FusionSettings = {
   enabled: true,
   workerCount: 3,
+  workers: [],
   workerOutputBytes: 12_000,
   contextBytes: 16_000,
   timeoutMs: 600_000,
@@ -108,6 +115,26 @@ export function normalizeThinkingChoice(value: string | undefined): FusionThinki
   return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current"
     ? (trimmed as FusionThinkingLevel)
     : undefined;
+}
+
+export function normalizeWorkerSlots(workers: FusionWorker[] | undefined, count: number): FusionWorker[] {
+  const base = workers ?? [];
+  return Array.from({ length: Math.max(1, count) }, (_, index) => ({
+    model: normalizeModelSpec(base[index]?.model),
+    thinking: normalizeThinkingChoice(base[index]?.thinking),
+  }));
+}
+
+export function resolveWorkerModel(settings: FusionSettings, index: number, fallback: string | undefined): string | undefined {
+  return settings.workers[index]?.model ?? settings.workerModel ?? fallback;
+}
+
+export function resolveWorkerThinking(
+  settings: FusionSettings,
+  index: number,
+  fallback: FusionThinkingLevel | undefined,
+): FusionThinkingLevel | undefined {
+  return settings.workers[index]?.thinking ?? settings.workerThinking ?? fallback;
 }
 
 export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
@@ -149,6 +176,7 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
   settings.discoveryThinking = normalizeThinkingChoice(settings.discoveryThinking);
   settings.workerThinking = normalizeThinkingChoice(settings.workerThinking);
   settings.synthesizerThinking = normalizeThinkingChoice(settings.synthesizerThinking);
+  settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
 
   return settings;
 }
