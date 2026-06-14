@@ -55,13 +55,15 @@ From the pane you can tweak:
 - whether fusion is enabled;
 - the number of worker planners;
 - the worker model;
-- the synthesizer/actor model.
+- the worker reasoning effort;
+- the synthesizer/actor model;
+- the synthesizer/actor reasoning effort.
 
 Keyboard controls:
 
 ```text
 ↑/↓       move
-←/→       adjust worker count or cycle models
+←/→       adjust worker count or cycle model/reasoning values
 Enter     pick a model or save
 Space     toggle enabled
 Esc       cancel
@@ -79,8 +81,12 @@ Model rows also open a floating searchable picker with `Enter`.
 /fusion workers 4
 /fusion worker-model anthropic/claude-sonnet-4-5
 /fusion worker-model current
+/fusion worker-thinking high
+/fusion worker-thinking current
 /fusion synthesizer-model openai/gpt-5.2-codex
 /fusion synthesizer-model current
+/fusion synthesizer-thinking xhigh
+/fusion synthesizer-thinking current
 /fusion output 12000
 /fusion context 16000
 /fusion timeout 600000
@@ -96,13 +102,21 @@ Settings changed through `/fusion` are persisted in the pi session via a custom 
 pi --fusion-disabled
 pi --fusion-workers 3
 pi --fusion-worker-model anthropic/claude-sonnet-4-5
+pi --fusion-worker-thinking high
 pi --fusion-synthesizer-model openai/gpt-5.2-codex
+pi --fusion-synthesizer-thinking xhigh
 pi --fusion-output-bytes 12000
 pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-`current` or omitting a model flag means "use/keep the current main-session model". `--fusion-model` is kept as a backwards-compatible alias for `--fusion-worker-model`.
+`current` or omitting a model/thinking flag means "use/keep the current main-session value". `--fusion-model` is kept as a backwards-compatible alias for `--fusion-worker-model`.
+
+Reasoning effort values are:
+
+```text
+current, off, minimal, low, medium, high, xhigh
+```
 
 ## Bypasses
 

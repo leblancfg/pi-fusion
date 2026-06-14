@@ -36,6 +36,8 @@ describe("settings", () => {
       "fusion-timeout-ms": "abc",
       "fusion-worker-model": "openai/gpt-5",
       "fusion-synthesizer-model": "anthropic/claude-opus-4-5",
+      "fusion-worker-thinking": "high",
+      "fusion-synthesizer-thinking": "xhigh",
     });
 
     assert.equal(settings.workerCount, 8);
@@ -44,6 +46,21 @@ describe("settings", () => {
     assert.equal(settings.timeoutMs, 600_000);
     assert.equal(settings.workerModel, "openai/gpt-5");
     assert.equal(settings.synthesizerModel, "anthropic/claude-opus-4-5");
+    assert.equal(settings.workerThinking, "high");
+    assert.equal(settings.synthesizerThinking, "xhigh");
+  });
+
+  it("normalizes current/default and ignores invalid reasoning levels", () => {
+    const settings = resolveSettings({
+      "fusion-worker-thinking": "current",
+      "fusion-synthesizer-thinking": "default",
+    });
+    assert.equal(settings.workerThinking, undefined);
+    assert.equal(settings.synthesizerThinking, undefined);
+
+    const invalid = resolveSettings({ "fusion-worker-thinking": "maximum", "fusion-synthesizer-thinking": "wat" });
+    assert.equal(invalid.workerThinking, undefined);
+    assert.equal(invalid.synthesizerThinking, undefined);
   });
 
   it("keeps --fusion-model as a worker model alias and migrates legacy persisted model", () => {

@@ -1,5 +1,10 @@
 export const ACTOR_PROMPT_MARKER = "<!-- pi-fusion:actor-prompt -->";
 
+export type FusionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type FusionThinkingChoice = "current" | FusionThinkingLevel;
+
+export const THINKING_CHOICES: FusionThinkingChoice[] = ["current", "off", "minimal", "low", "medium", "high", "xhigh"];
+
 export interface FusionSettings {
   enabled: boolean;
   workerCount: number;
@@ -8,6 +13,8 @@ export interface FusionSettings {
   timeoutMs: number;
   workerModel: string | undefined;
   synthesizerModel: string | undefined;
+  workerThinking: FusionThinkingLevel | undefined;
+  synthesizerThinking: FusionThinkingLevel | undefined;
 }
 
 export interface PersistedFusionSettings extends Partial<FusionSettings> {
@@ -23,6 +30,8 @@ export interface FusionFlags {
   "fusion-model"?: boolean | string;
   "fusion-worker-model"?: boolean | string;
   "fusion-synthesizer-model"?: boolean | string;
+  "fusion-worker-thinking"?: boolean | string;
+  "fusion-synthesizer-thinking"?: boolean | string;
 }
 
 export interface WorkerLens {
@@ -65,6 +74,8 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   timeoutMs: 600_000,
   workerModel: undefined,
   synthesizerModel: undefined,
+  workerThinking: undefined,
+  synthesizerThinking: undefined,
 };
 
 export const WORKER_LENSES: WorkerLens[] = [
@@ -107,6 +118,14 @@ function normalizeModelSpec(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+export function normalizeThinkingChoice(value: string | undefined): FusionThinkingLevel | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
+  return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current"
+    ? (trimmed as FusionThinkingLevel)
+    : undefined;
+}
+
 export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
   const persistedWithoutLegacy = persisted ? { ...persisted } : undefined;
   delete persistedWithoutLegacy?.model;
@@ -130,10 +149,16 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
 
   const workerModelFlag = flags["fusion-worker-model"] ?? flags["fusion-model"];
   const synthesizerModelFlag = flags["fusion-synthesizer-model"];
+  const workerThinkingFlag = flags["fusion-worker-thinking"];
+  const synthesizerThinkingFlag = flags["fusion-synthesizer-thinking"];
   if (typeof workerModelFlag === "string") settings.workerModel = normalizeModelSpec(workerModelFlag);
   if (typeof synthesizerModelFlag === "string") settings.synthesizerModel = normalizeModelSpec(synthesizerModelFlag);
+  if (typeof workerThinkingFlag === "string") settings.workerThinking = normalizeThinkingChoice(workerThinkingFlag);
+  if (typeof synthesizerThinkingFlag === "string") settings.synthesizerThinking = normalizeThinkingChoice(synthesizerThinkingFlag);
   settings.workerModel = normalizeModelSpec(settings.workerModel);
   settings.synthesizerModel = normalizeModelSpec(settings.synthesizerModel);
+  settings.workerThinking = normalizeThinkingChoice(settings.workerThinking);
+  settings.synthesizerThinking = normalizeThinkingChoice(settings.synthesizerThinking);
 
   return settings;
 }

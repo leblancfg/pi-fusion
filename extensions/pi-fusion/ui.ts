@@ -1,7 +1,7 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { FusionSettings } from "./fusion.ts";
+import { THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice } from "./fusion.ts";
 
 interface FusionPaneResult {
   action: "save" | "cancel" | "pick-worker-model" | "pick-synthesizer-model";
@@ -30,6 +30,10 @@ function setModelChoice(settings: FusionSettings, field: ModelField, spec: strin
 
 function formatModelValue(spec: string | undefined): string {
   return spec ?? "current";
+}
+
+function formatThinkingValue(choice: string | undefined): FusionThinkingChoice {
+  return (choice ?? "current") as FusionThinkingChoice;
 }
 
 function modelSpecFromModel(model: ReturnType<ExtensionContext["modelRegistry"]["getAll"]>[number]): string {
@@ -72,7 +76,15 @@ function padToWidth(text: string, width: number): string {
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = ["enabled", "workers", "workerModel", "synthesizerModel", "save"] as const;
+  private readonly rows = [
+    "enabled",
+    "workers",
+    "workerModel",
+    "workerThinking",
+    "synthesizerModel",
+    "synthesizerThinking",
+    "save",
+  ] as const;
 
   constructor(
     private readonly theme: Theme,
@@ -128,7 +140,9 @@ class FusionPane {
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space"),
       this.renderSettingRow("workers", "Workers", String(this.settings.workerCount), "←/→"),
       this.renderSettingRow("workerModel", "Worker model", formatModelValue(this.settings.workerModel), "enter pick"),
+      this.renderSettingRow("workerThinking", "Worker reasoning", formatThinkingValue(this.settings.workerThinking), "←/→"),
       this.renderSettingRow("synthesizerModel", "Synth model", formatModelValue(this.settings.synthesizerModel), "enter pick"),
+      this.renderSettingRow("synthesizerThinking", "Synth reasoning", formatThinkingValue(this.settings.synthesizerThinking), "←/→"),
       this.renderSettingRow("save", "Save and close", th.fg("accent", "enter"), "esc cancel"),
     ];
 
@@ -157,8 +171,12 @@ class FusionPane {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
     } else if (row === "workerModel") {
       this.cycleModel("workerModel", delta);
+    } else if (row === "workerThinking") {
+      this.cycleThinking("workerThinking", delta);
     } else if (row === "synthesizerModel") {
       this.cycleModel("synthesizerModel", delta);
+    } else if (row === "synthesizerThinking") {
+      this.cycleThinking("synthesizerThinking", delta);
     }
   }
 
@@ -168,6 +186,13 @@ class FusionPane {
     const index = Math.max(0, this.modelSpecs.indexOf(current));
     const next = this.modelSpecs[(index + delta + this.modelSpecs.length) % this.modelSpecs.length] ?? "current";
     setModelChoice(this.settings, field, next);
+  }
+
+  private cycleThinking(field: "workerThinking" | "synthesizerThinking", delta: -1 | 1): void {
+    const current = formatThinkingValue(this.settings[field]);
+    const index = Math.max(0, THINKING_CHOICES.indexOf(current));
+    const next = THINKING_CHOICES[(index + delta + THINKING_CHOICES.length) % THINKING_CHOICES.length] ?? "current";
+    this.settings[field] = next === "current" ? undefined : next;
   }
 
   private renderSettingRow(row: (typeof this.rows)[number], label: string, value: string, hint: string): string {
@@ -257,7 +282,7 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 12, margin: 2 },
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 14, margin: 2 },
       },
     );
 

@@ -105,7 +105,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
   try {
     const args = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--tools", "read,grep,find,ls"];
     if (input.model) args.push("--model", input.model);
-    if (input.thinkingLevel && input.thinkingLevel !== "off") args.push("--thinking", input.thinkingLevel);
+    if (input.thinkingLevel) args.push("--thinking", input.thinkingLevel);
     args.push(`@${tmp.file}`);
 
     const invocation = getPiInvocation(args);
@@ -202,6 +202,8 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-model": pi.getFlag("fusion-model"),
     "fusion-worker-model": pi.getFlag("fusion-worker-model"),
     "fusion-synthesizer-model": pi.getFlag("fusion-synthesizer-model"),
+    "fusion-worker-thinking": pi.getFlag("fusion-worker-thinking"),
+    "fusion-synthesizer-thinking": pi.getFlag("fusion-synthesizer-thinking"),
   };
   return resolveSettings(flags, persisted);
 }
@@ -214,7 +216,9 @@ function settingsSummary(settings: FusionSettings): string {
     `contextBytes=${settings.contextBytes}`,
     `timeoutMs=${settings.timeoutMs}`,
     `workerModel=${settings.workerModel ?? "current"}`,
+    `workerThinking=${settings.workerThinking ?? "current"}`,
     `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
+    `synthesizerThinking=${settings.synthesizerThinking ?? "current"}`,
   ].join(" ");
 }
 
@@ -267,6 +271,16 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
+  pi.registerFlag("fusion-worker-thinking", {
+    description: "Reasoning effort for fusion workers: current/off/minimal/low/medium/high/xhigh",
+    type: "string",
+    default: "current",
+  });
+  pi.registerFlag("fusion-synthesizer-thinking", {
+    description: "Reasoning effort for the synthesizer/actor turn: current/off/minimal/low/medium/high/xhigh",
+    type: "string",
+    default: "current",
+  });
 
   function persist(): void {
     pi.appendEntry("pi-fusion-settings", settings);
@@ -311,11 +325,15 @@ export default function piFusion(pi: ExtensionAPI): void {
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
       else if (command === "model" || command === "worker-model") settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
-      else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
+      else if (command === "worker-thinking" || command === "worker-reasoning") {
+        settings.workerThinking = resolveSettings({ "fusion-worker-thinking": value }, settings).workerThinking;
+      } else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
         settings.synthesizerModel = resolveSettings({ "fusion-synthesizer-model": value }, settings).synthesizerModel;
+      } else if (command === "synthesizer-thinking" || command === "synth-thinking" || command === "synthesizer-reasoning" || command === "synth-reasoning") {
+        settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|workers N|worker-model SPEC|synthesizer-model SPEC|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|workers N|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -343,7 +361,7 @@ export default function piFusion(pi: ExtensionAPI): void {
 
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
     const model = settings.workerModel ?? currentModelSpec(ctx);
-    const thinkingLevel = pi.getThinkingLevel();
+    const thinkingLevel = settings.workerThinking ?? pi.getThinkingLevel();
     const statusLines = Array.from({ length: settings.workerCount }, (_, index) => {
       const lens = getWorkerLens(index);
       return `⏳ worker ${index + 1}: ${lens.name}`;
@@ -384,6 +402,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           ctx.ui.notify(`pi-fusion: no API key for synthesizer model: ${settings.synthesizerModel}`, "warning");
         }
       }
+      if (settings.synthesizerThinking) pi.setThinkingLevel(settings.synthesizerThinking);
 
       const actorPrompt = buildActorPrompt({
         originalText: event.text,
