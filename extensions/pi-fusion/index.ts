@@ -10,6 +10,7 @@ import {
   buildWorkerPrompt,
   collectRecentConversation,
   DEFAULT_SETTINGS,
+  formatToolEvent,
   getWorkerLens,
   normalizeWorkerSlots,
   parsePromptVariations,
@@ -168,7 +169,8 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         }
 
         if (event.type === "tool_execution_start" && event.toolName) {
-          liveEvents.push(`${event.toolName}`);
+          const label = formatToolEvent(event.toolName, event.args, os.homedir());
+          liveEvents.push(label.length > 100 ? `${label.slice(0, 99)}…` : label);
           input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
           return;
         }

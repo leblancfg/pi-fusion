@@ -208,6 +208,45 @@ export function getWorkerLens(index: number): WorkerLens {
   return { name: `#${index + 1}` };
 }
 
+export function formatToolEvent(toolName: string, args: unknown, home?: string): string {
+  const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const asString = (value: unknown): string => (typeof value === "string" ? value : value === undefined || value === null ? "" : String(value));
+  const shorten = (path: string): string => (home && path.startsWith(home) ? `~${path.slice(home.length)}` : path);
+
+  switch (toolName) {
+    case "read": {
+      const path = shorten(asString(record.path ?? record.file_path));
+      const offset = record.offset;
+      const limit = record.limit;
+      const range = typeof offset === "number" ? `:${offset}${typeof limit === "number" ? `-${offset + limit - 1}` : ""}` : "";
+      return `read ${path}${range}`.trimEnd();
+    }
+    case "ls":
+      return `ls ${shorten(asString(record.path) || ".")}`.trimEnd();
+    case "grep": {
+      const pattern = asString(record.pattern);
+      const path = shorten(asString(record.path));
+      return `grep ${pattern ? `/${pattern}/` : ""}${path ? ` ${path}` : ""}`.replace(/\s+/g, " ").trim();
+    }
+    case "find": {
+      const pattern = asString(record.pattern) || "*";
+      const path = shorten(asString(record.path));
+      return `find ${pattern}${path ? ` ${path}` : ""}`.trim();
+    }
+    case "bash":
+      return `$ ${asString(record.command)}`.trim();
+    default: {
+      let json = "";
+      try {
+        json = JSON.stringify(record);
+      } catch {
+        // arguments not serializable; fall back to the bare tool name
+      }
+      return json && json !== "{}" ? `${toolName} ${json}` : toolName;
+    }
+  }
+}
+
 export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string }): string {
   const contextSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
 

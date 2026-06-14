@@ -7,6 +7,7 @@ import {
   buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
+  formatToolEvent,
   getWorkerLens,
   normalizeWorkerSlots,
   parsePromptVariations,
@@ -229,6 +230,18 @@ describe("prompts", () => {
     assert.deepEqual(parsePromptVariations('["a","b","c","d"]', 3, "fallback"), ["a", "b", "c"]);
     assert.deepEqual(parsePromptVariations("1. one\n2. two", 2, "fallback"), ["one", "two"]);
     assert.deepEqual(parsePromptVariations("", 2, "fallback"), ["fallback", "fallback"]);
+  });
+});
+
+describe("tool events", () => {
+  it("formats tool calls like the native renderer", () => {
+    assert.equal(formatToolEvent("read", { path: "src/index.ts" }), "read src/index.ts");
+    assert.equal(formatToolEvent("read", { path: "a.ts", offset: 10, limit: 5 }), "read a.ts:10-14");
+    assert.equal(formatToolEvent("grep", { pattern: "Shop", path: "app" }), "grep /Shop/ app");
+    assert.equal(formatToolEvent("find", { pattern: "*.ts", path: "src" }), "find *.ts src");
+    assert.equal(formatToolEvent("ls", {}), "ls .");
+    assert.equal(formatToolEvent("read", { path: "/home/u/x.ts" }, "/home/u"), "read ~/x.ts");
+    assert.equal(formatToolEvent("custom", { a: 1 }), 'custom {"a":1}');
   });
 });
 
