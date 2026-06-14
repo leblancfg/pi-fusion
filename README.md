@@ -1,9 +1,11 @@
 # pi-fusion
 
-Standalone [pi](https://pi.dev) extension for experimenting with **LLM Fusion**: each normal user turn is rewritten into a two-stage flow:
+Standalone [pi](https://pi.dev) extension for experimenting with **LLM Fusion**: each normal user turn is rewritten into a multi-stage flow:
 
-1. Run several read-only planner workers in parallel.
-2. Feed their bounded outputs to the normal actor turn, which synthesizes and acts.
+1. Run a read-only discovery agent to gather reusable context.
+2. Run a quick query-rewrite pass to produce complementary worker prompts.
+3. Run several read-only planner workers in parallel.
+4. Feed discovery context and bounded worker outputs to the normal actor turn, which synthesizes and acts.
 
 This is intentionally a rough testing harness, not a polished agent workflow.
 
@@ -23,30 +25,28 @@ pi -e ./extensions/pi-fusion/index.ts
 
 For each idle, non-command user input, the extension:
 
-- opens a live floating split pane in TUI mode, with one vertical column per worker;
-- spawns `N` standalone `pi` subprocesses in JSON print mode;
-- streams each worker's reasoning deltas, tool events, and output into its column as JSON events arrive;
+- opens a live floating split pane in TUI mode, with columns for discovery, rewrite, and each worker;
+- spawns standalone `pi` subprocesses in JSON print mode;
+- streams each subprocess's reasoning deltas, tool events, and output into its column as JSON events arrive;
 - disables extensions in those subprocesses with `--no-extensions` to avoid recursive fusion;
-- restricts worker tools to `read,grep,find,ls`;
-- gives each worker the current task plus a capped slice of recent conversation context;
+- runs discovery with read/search tools (`read,grep,find,ls`) and captures both its summary and tool-result context;
+- runs query rewriting with no tools using the worker model;
+- gives each numbered worker (`#1`, `#2`, `#3`, ...) the original task, recent context, shared discovery context, and one rewritten exploration prompt;
 - asks workers to return concise planning markdown;
 - transforms the original user message into an actor prompt containing:
   - the original request;
+  - shared discovery context;
+  - prompt variations;
   - bounded worker outputs;
-  - instructions to synthesize, verify, and act normally.
+  - instructions to synthesize, verify, and avoid redundant tool calls.
 
 The actor is the regular pi agent in the main session, with whatever tools/settings you already selected. By default it keeps your current model, but pi-fusion can optionally switch to a configured synthesizer model before the actor turn starts.
 
-## Worker lenses
+## Discovery and query rewriting
 
-The first stab uses a small set of planning lenses to diversify useful thinking:
+Discovery is a tunable first step with its own model and reasoning effort. Its job is to spend tool calls once, up front, and produce reusable context for the worker fanout and synthesizer.
 
-- `mapper` — find relevant files/symbols/patterns;
-- `planner` — propose a minimal implementation plan and verification;
-- `skeptic` — look for risks, edge cases, and tests;
-- `simplifier` — challenge unnecessary complexity.
-
-If you configure more than four workers, lenses repeat.
+The rewrite step is a quick no-tool call using the worker model. It rewrites the user request into one complementary exploration prompt per worker, similar to query expansion in RAG. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas.
 
 ## UI
 
@@ -56,6 +56,8 @@ From the pane you can tweak:
 
 - whether fusion is enabled;
 - the number of worker planners;
+- the discovery model;
+- the discovery reasoning effort;
 - the worker model;
 - the worker reasoning effort;
 - the synthesizer/actor model;
@@ -77,7 +79,7 @@ Model rows also open a floating searchable picker with `Enter`.
 
 In TUI mode, each fused turn shows a floating live panel while workers are running. It behaves like vertical splits:
 
-- each worker gets its own column;
+- discovery, rewrite, and each worker get their own columns;
 - reasoning streams into the `reasoning` section when the selected provider/model exposes thinking deltas;
 - assistant text streams into the `output` section;
 - read/search tool calls show as lightweight `→ tool` events.
@@ -92,6 +94,10 @@ Press `Esc` while the panel is focused to hide it without cancelling the workers
 /fusion on
 /fusion off
 /fusion workers 4
+/fusion discovery-model anthropic/claude-haiku-4-5
+/fusion discovery-model current
+/fusion discovery-thinking low
+/fusion discovery-thinking current
 /fusion worker-model anthropic/claude-sonnet-4-5
 /fusion worker-model current
 /fusion worker-thinking high
@@ -114,6 +120,8 @@ Settings changed through `/fusion` are persisted in the pi session via a custom 
 ```bash
 pi --fusion-disabled
 pi --fusion-workers 3
+pi --fusion-discovery-model anthropic/claude-haiku-4-5
+pi --fusion-discovery-thinking low
 pi --fusion-worker-model anthropic/claude-sonnet-4-5
 pi --fusion-worker-thinking high
 pi --fusion-synthesizer-model openai/gpt-5.2-codex
@@ -145,19 +153,19 @@ These skips keep the first version predictable and avoid recursion.
 
 ## Context budget
 
-Worker output inserted into the main actor prompt is capped per worker (`fusion-output-bytes`, default `12000`). Recent conversation context sent to each worker is separately capped (`fusion-context-bytes`, default `16000`). Prior fusion actor bundles are skipped when building worker context so the session does not recursively balloon.
+Worker output inserted into the main actor prompt is capped per worker (`fusion-output-bytes`, default `12000`). Recent conversation context sent to discovery/workers is separately capped (`fusion-context-bytes`, default `16000`). Prior fusion actor bundles are skipped when building worker context so the session does not recursively balloon. Discovery tool-result context is bounded internally before being shared downstream.
 
 Full worker transcripts are not stored separately yet. The main session only sees the bounded actor prompt.
 
 ## Rough edges to watch
 
-- Workers are subprocesses, not true session forks. They receive a truncated text snapshot of recent conversation instead of the exact pi session tree.
-- Planner workers do not see attached images. The actor prompt warns the actor when images are present.
+- Discovery/workers/rewrite are subprocesses, not true session forks. They receive a truncated text snapshot of recent conversation instead of the exact pi session tree.
+- Discovery and planner workers do not see attached images. The actor prompt warns the actor when images are present.
 - Worker subprocesses still load normal pi context files (`AGENTS.md`) but not extensions.
-- Worker planning blocks the input turn until all workers finish or time out.
+- Discovery, rewrite, and worker planning block the input turn until the fanout finishes or times out.
 - The live split pane only appears in TUI mode; print/JSON/RPC still run fusion without that UI.
 - Some providers/models hide chain-of-thought, so a worker column may show no reasoning stream even when reasoning effort is enabled.
-- Worker tool access is intentionally very narrow: no `bash`, no write/edit.
+- Discovery/worker tool access is intentionally very narrow: no `bash`, no write/edit.
 - Print/JSON/RPC modes should work in principle, but the extension is mostly designed for interactive testing.
 
 ## Development

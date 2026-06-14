@@ -6,6 +6,7 @@ import {
   buildWorkerPrompt,
   collectRecentConversation,
   getWorkerLens,
+  parsePromptVariations,
   resolveSettings,
   shouldBypassFusion,
   truncateUtf8,
@@ -19,6 +20,7 @@ function worker(overrides: Partial<WorkerResult> = {}): WorkerResult {
     ok: true,
     output: "worker output",
     reasoning: "worker reasoning",
+    toolContext: "tool context",
     stderr: "",
     exitCode: 0,
     timedOut: false,
@@ -35,8 +37,10 @@ describe("settings", () => {
       "fusion-output-bytes": "10",
       "fusion-context-bytes": "-1",
       "fusion-timeout-ms": "abc",
+      "fusion-discovery-model": "anthropic/claude-haiku-4-5",
       "fusion-worker-model": "openai/gpt-5",
       "fusion-synthesizer-model": "anthropic/claude-opus-4-5",
+      "fusion-discovery-thinking": "low",
       "fusion-worker-thinking": "high",
       "fusion-synthesizer-thinking": "xhigh",
     });
@@ -45,21 +49,26 @@ describe("settings", () => {
     assert.equal(settings.workerOutputBytes, 1_000);
     assert.equal(settings.contextBytes, 0);
     assert.equal(settings.timeoutMs, 600_000);
+    assert.equal(settings.discoveryModel, "anthropic/claude-haiku-4-5");
     assert.equal(settings.workerModel, "openai/gpt-5");
     assert.equal(settings.synthesizerModel, "anthropic/claude-opus-4-5");
+    assert.equal(settings.discoveryThinking, "low");
     assert.equal(settings.workerThinking, "high");
     assert.equal(settings.synthesizerThinking, "xhigh");
   });
 
   it("normalizes current/default and ignores invalid reasoning levels", () => {
     const settings = resolveSettings({
+      "fusion-discovery-thinking": "current",
       "fusion-worker-thinking": "current",
       "fusion-synthesizer-thinking": "default",
     });
+    assert.equal(settings.discoveryThinking, undefined);
     assert.equal(settings.workerThinking, undefined);
     assert.equal(settings.synthesizerThinking, undefined);
 
-    const invalid = resolveSettings({ "fusion-worker-thinking": "maximum", "fusion-synthesizer-thinking": "wat" });
+    const invalid = resolveSettings({ "fusion-discovery-thinking": "maximum", "fusion-worker-thinking": "maximum", "fusion-synthesizer-thinking": "wat" });
+    assert.equal(invalid.discoveryThinking, undefined);
     assert.equal(invalid.workerThinking, undefined);
     assert.equal(invalid.synthesizerThinking, undefined);
   });
@@ -113,28 +122,35 @@ describe("bypass", () => {
 });
 
 describe("prompts", () => {
-  it("builds read-only worker prompts with task, context, cwd, and lens", () => {
+  it("builds read-only numbered worker prompts with discovery context and assigned rewrite", () => {
     const lens = getWorkerLens(0);
     const prompt = buildWorkerPrompt({
       task: "Add tests",
+      assignedPrompt: "Explore API tests first",
       recentContext: "Earlier context",
+      discoveryContext: "Discovery context",
       cwd: "/repo",
       workerIndex: 0,
       workerCount: 3,
       lens,
     });
 
+    assert.equal(lens.name, "#1");
     assert.match(prompt, /read-only/);
     assert.match(prompt, /do not modify files/);
     assert.match(prompt, /Working directory: \/repo/);
     assert.match(prompt, /Earlier context/);
+    assert.match(prompt, /Discovery context/);
     assert.match(prompt, /Add tests/);
-    assert.match(prompt, /Planning lens: mapper/);
+    assert.match(prompt, /Explore API tests first/);
+    assert.doesNotMatch(prompt, /mapper|planner|skeptic/);
   });
 
   it("builds actor prompt with bounded worker outputs and image warning", () => {
     const prompt = buildActorPrompt({
       originalText: "Implement feature",
+      discoveryContext: "Read src/index.ts and found entrypoint",
+      promptVariations: ["Explore tests", "Explore API", "Explore docs"],
       workerResults: [worker({ output: "x".repeat(2_000) })],
       workerOutputBytes: 100,
       imageCount: 2,
@@ -143,8 +159,15 @@ describe("prompts", () => {
     assert.match(prompt, new RegExp(ACTOR_PROMPT_MARKER));
     assert.match(prompt, /Implement feature/);
     assert.match(prompt, /Workers did not see images/);
+    assert.match(prompt, /Shared discovery context/);
+    assert.match(prompt, /Explore API/);
     assert.match(prompt, /pi-fusion truncated/);
     assert.ok(Buffer.byteLength(prompt, "utf8") < 2_000);
+  });
+  it("parses query rewrite JSON and pads to the worker count", () => {
+    assert.deepEqual(parsePromptVariations('["one", "two"]', 3, "fallback"), ["one", "two", "two"]);
+    assert.deepEqual(parsePromptVariations("1. one\n2. two", 2, "fallback"), ["one", "two"]);
+    assert.deepEqual(parsePromptVariations("", 2, "fallback"), ["fallback", "fallback"]);
   });
 });
 

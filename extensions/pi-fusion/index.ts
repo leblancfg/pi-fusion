@@ -5,12 +5,16 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   buildActorPrompt,
+  buildDiscoveryPrompt,
+  buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
   DEFAULT_SETTINGS,
   getWorkerLens,
+  parsePromptVariations,
   resolveSettings,
   shouldBypassFusion,
+  truncateUtf8,
   type FusionFlags,
   type FusionSettings,
   type PersistedFusionSettings,
@@ -31,6 +35,7 @@ interface JsonMessage {
   model?: string;
   stopReason?: string;
   errorMessage?: string;
+  toolName?: string;
 }
 
 interface RunWorkerInput {
@@ -41,6 +46,7 @@ interface RunWorkerInput {
   timeoutMs: number;
   model: string | undefined;
   thinkingLevel: string | undefined;
+  tools?: string[] | "none";
   onLiveUpdate?: (index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>) => void;
 }
 
@@ -97,6 +103,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
     ok: false,
     output: "",
     reasoning: "",
+    toolContext: "",
     stderr: "",
     exitCode: null,
     timedOut: false,
@@ -105,7 +112,9 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
   };
 
   try {
-    const args = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--tools", "read,grep,find,ls"];
+    const args = ["--mode", "json", "-p", "--no-session", "--no-extensions"];
+    if (input.tools === "none") args.push("--no-tools");
+    else args.push("--tools", (input.tools ?? ["read", "grep", "find", "ls"]).join(","));
     if (input.model) args.push("--model", input.model);
     if (input.thinkingLevel) args.push("--thinking", input.thinkingLevel);
     args.push(`@${tmp.file}`);
@@ -146,6 +155,16 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         if (event.type === "tool_execution_start" && event.toolName) {
           liveEvents.push(`${event.toolName}`);
           input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
+          return;
+        }
+
+        const toolResultMessage = event.message as JsonMessage | undefined;
+        if ((event.type === "tool_result_end" || (event.type === "message_end" && toolResultMessage?.role === "toolResult")) && toolResultMessage) {
+          const toolText = textFromContent(toolResultMessage.content).trim();
+          if (toolText) {
+            const toolName = toolResultMessage.toolName ?? event.toolName ?? "tool";
+            result.toolContext = truncateUtf8(`${result.toolContext}\n\n### ${toolName}\n\n${toolText}`.trim(), 48_000);
+          }
           return;
         }
 
@@ -231,8 +250,10 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-context-bytes": pi.getFlag("fusion-context-bytes"),
     "fusion-timeout-ms": pi.getFlag("fusion-timeout-ms"),
     "fusion-model": pi.getFlag("fusion-model"),
+    "fusion-discovery-model": pi.getFlag("fusion-discovery-model"),
     "fusion-worker-model": pi.getFlag("fusion-worker-model"),
     "fusion-synthesizer-model": pi.getFlag("fusion-synthesizer-model"),
+    "fusion-discovery-thinking": pi.getFlag("fusion-discovery-thinking"),
     "fusion-worker-thinking": pi.getFlag("fusion-worker-thinking"),
     "fusion-synthesizer-thinking": pi.getFlag("fusion-synthesizer-thinking"),
   };
@@ -246,6 +267,8 @@ function settingsSummary(settings: FusionSettings): string {
     `workerOutputBytes=${settings.workerOutputBytes}`,
     `contextBytes=${settings.contextBytes}`,
     `timeoutMs=${settings.timeoutMs}`,
+    `discoveryModel=${settings.discoveryModel ?? "current"}`,
+    `discoveryThinking=${settings.discoveryThinking ?? "current"}`,
     `workerModel=${settings.workerModel ?? "current"}`,
     `workerThinking=${settings.workerThinking ?? "current"}`,
     `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
@@ -257,6 +280,15 @@ function findModelBySpec(ctx: ExtensionContext, spec: string): ReturnType<Extens
   const slash = spec.indexOf("/");
   if (slash <= 0 || slash === spec.length - 1) return undefined;
   return ctx.modelRegistry.find(spec.slice(0, slash), spec.slice(slash + 1));
+}
+
+function buildSharedDiscoveryContext(result: WorkerResult): string {
+  return truncateUtf8(
+    [`## Discovery summary\n\n${result.output.trim() || "(no discovery summary)"}`, result.toolContext.trim() ? `## Discovery tool context\n\n${result.toolContext.trim()}` : ""]
+      .filter(Boolean)
+      .join("\n\n"),
+    48_000,
+  );
 }
 
 export default function piFusion(pi: ExtensionAPI): void {
@@ -292,6 +324,11 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
+  pi.registerFlag("fusion-discovery-model", {
+    description: "Model for the fusion discovery agent, or current/default",
+    type: "string",
+    default: "current",
+  });
   pi.registerFlag("fusion-worker-model", {
     description: "Model for fusion workers, or current/default",
     type: "string",
@@ -299,6 +336,11 @@ export default function piFusion(pi: ExtensionAPI): void {
   });
   pi.registerFlag("fusion-synthesizer-model", {
     description: "Model for the synthesizer/actor turn, or current/default",
+    type: "string",
+    default: "current",
+  });
+  pi.registerFlag("fusion-discovery-thinking", {
+    description: "Reasoning effort for discovery: current/off/minimal/low/medium/high/xhigh",
     type: "string",
     default: "current",
   });
@@ -355,7 +397,10 @@ export default function piFusion(pi: ExtensionAPI): void {
       else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
-      else if (command === "model" || command === "worker-model") settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
+      else if (command === "discovery-model") settings.discoveryModel = resolveSettings({ "fusion-discovery-model": value }, settings).discoveryModel;
+      else if (command === "discovery-thinking" || command === "discovery-reasoning") {
+        settings.discoveryThinking = resolveSettings({ "fusion-discovery-thinking": value }, settings).discoveryThinking;
+      } else if (command === "model" || command === "worker-model") settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
       else if (command === "worker-thinking" || command === "worker-reasoning") {
         settings.workerThinking = resolveSettings({ "fusion-worker-thinking": value }, settings).workerThinking;
       } else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
@@ -364,7 +409,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|workers N|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -391,40 +436,79 @@ export default function piFusion(pi: ExtensionAPI): void {
     if (bypassReason) return { action: "continue" as const };
 
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
-    const model = settings.workerModel ?? currentModelSpec(ctx);
-    const thinkingLevel = settings.workerThinking ?? pi.getThinkingLevel();
+    const currentModel = currentModelSpec(ctx);
+    const workerModel = settings.workerModel ?? currentModel;
+    const workerThinking = settings.workerThinking ?? pi.getThinkingLevel();
+    const discoveryModel = settings.discoveryModel ?? currentModel;
+    const discoveryThinking = settings.discoveryThinking ?? pi.getThinkingLevel();
     const statusLines = Array.from({ length: settings.workerCount }, (_, index) => {
       const lens = getWorkerLens(index);
       return `⏳ worker ${index + 1}: ${lens.name}`;
     });
-    const liveStates: FusionLiveWorkerState[] = Array.from({ length: settings.workerCount }, (_, index) => {
-      const lens = getWorkerLens(index);
-      return { index, lens: lens.name, status: "queued", output: "", reasoning: "", events: [] };
-    });
+    const liveStates: FusionLiveWorkerState[] = [
+      { index: 0, label: "discovery", lens: "shared context", status: "queued", output: "", reasoning: "", events: [] },
+      { index: 1, label: "rewrite", lens: "query expansion", status: "queued", output: "", reasoning: "", events: [] },
+      ...Array.from({ length: settings.workerCount }, (_, index) => {
+        const lens = getWorkerLens(index);
+        return { index: index + 2, label: lens.name, lens: "worker", status: "queued" as const, output: "", reasoning: "", events: [] };
+      }),
+    ];
     const livePanel = startFusionLivePanel(ctx, liveStates);
     setFusionStatus(ctx, statusLines);
 
     try {
+      livePanel?.update(0, { status: "running" });
+      const discoveryResult = await runWorker({
+        prompt: buildDiscoveryPrompt({ task: event.text, recentContext, cwd: ctx.cwd }),
+        cwd: ctx.cwd,
+        index: 0,
+        lens: "discovery",
+        timeoutMs: settings.timeoutMs,
+        model: discoveryModel,
+        thinkingLevel: discoveryThinking,
+        tools: ["read", "grep", "find", "ls"],
+        onLiveUpdate: (_index, patch) => livePanel?.update(0, patch),
+      });
+      const discoveryContext = buildSharedDiscoveryContext(discoveryResult);
+
+      livePanel?.update(1, { status: "running" });
+      const rewriteResult = await runWorker({
+        prompt: buildRewritePrompt({ task: event.text, discoveryContext, workerCount: settings.workerCount }),
+        cwd: ctx.cwd,
+        index: 0,
+        lens: "rewrite",
+        timeoutMs: Math.min(settings.timeoutMs, 120_000),
+        model: workerModel,
+        thinkingLevel: "minimal",
+        tools: "none",
+        onLiveUpdate: (_index, patch) => livePanel?.update(1, patch),
+      });
+      const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, event.text);
+
       const workerPromises = Array.from({ length: settings.workerCount }, async (_, index) => {
+        const liveIndex = index + 2;
         const lens = getWorkerLens(index);
         const prompt = buildWorkerPrompt({
           task: event.text,
+          assignedPrompt: promptVariations[index] ?? event.text,
           recentContext,
+          discoveryContext,
           cwd: ctx.cwd,
           workerIndex: index,
           workerCount: settings.workerCount,
           lens,
         });
-        livePanel?.update(index, { status: "running" });
+        livePanel?.update(liveIndex, { status: "running" });
         const result = await runWorker({
           prompt,
           cwd: ctx.cwd,
           index,
           lens: lens.name,
           timeoutMs: settings.timeoutMs,
-          model,
-          thinkingLevel,
-          onLiveUpdate: (workerIndex, patch) => livePanel?.update(workerIndex, patch),
+          model: workerModel,
+          thinkingLevel: workerThinking,
+          tools: ["read", "grep", "find", "ls"],
+          onLiveUpdate: (_workerIndex, patch) => livePanel?.update(liveIndex, patch),
         });
         statusLines[index] = `${result.ok ? "✓" : "✗"} worker ${index + 1}: ${lens.name}`;
         setFusionStatus(ctx, statusLines);
@@ -444,6 +528,8 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       const actorPrompt = buildActorPrompt({
         originalText: event.text,
+        discoveryContext,
+        promptVariations,
         workerResults,
         workerOutputBytes: settings.workerOutputBytes,
         imageCount: event.images?.length ?? 0,

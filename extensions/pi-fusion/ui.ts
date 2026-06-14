@@ -4,11 +4,11 @@ import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWid
 import { THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice } from "./fusion.ts";
 
 interface FusionPaneResult {
-  action: "save" | "cancel" | "pick-worker-model" | "pick-synthesizer-model";
+  action: "save" | "cancel" | "pick-discovery-model" | "pick-worker-model" | "pick-synthesizer-model";
   settings: FusionSettings;
 }
 
-type ModelField = "workerModel" | "synthesizerModel";
+type ModelField = "discoveryModel" | "workerModel" | "synthesizerModel";
 
 type ModelChoice = {
   spec: string;
@@ -79,6 +79,8 @@ class FusionPane {
   private readonly rows = [
     "enabled",
     "workers",
+    "discoveryModel",
+    "discoveryThinking",
     "workerModel",
     "workerThinking",
     "synthesizerModel",
@@ -122,7 +124,8 @@ class FusionPane {
       return;
     }
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      if (row === "workerModel") this.done({ action: "pick-worker-model", settings: this.settings });
+      if (row === "discoveryModel") this.done({ action: "pick-discovery-model", settings: this.settings });
+      else if (row === "workerModel") this.done({ action: "pick-worker-model", settings: this.settings });
       else if (row === "synthesizerModel") this.done({ action: "pick-synthesizer-model", settings: this.settings });
       else if (row === "save") this.done({ action: "save", settings: this.settings });
       else this.adjust(row, 1);
@@ -139,6 +142,8 @@ class FusionPane {
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space"),
       this.renderSettingRow("workers", "Workers", String(this.settings.workerCount), "←/→"),
+      this.renderSettingRow("discoveryModel", "Discovery model", formatModelValue(this.settings.discoveryModel), "enter pick"),
+      this.renderSettingRow("discoveryThinking", "Discovery reasoning", formatThinkingValue(this.settings.discoveryThinking), "←/→"),
       this.renderSettingRow("workerModel", "Worker model", formatModelValue(this.settings.workerModel), "enter pick"),
       this.renderSettingRow("workerThinking", "Worker reasoning", formatThinkingValue(this.settings.workerThinking), "←/→"),
       this.renderSettingRow("synthesizerModel", "Synth model", formatModelValue(this.settings.synthesizerModel), "enter pick"),
@@ -169,6 +174,10 @@ class FusionPane {
       this.settings.enabled = !this.settings.enabled;
     } else if (row === "workers") {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
+    } else if (row === "discoveryModel") {
+      this.cycleModel("discoveryModel", delta);
+    } else if (row === "discoveryThinking") {
+      this.cycleThinking("discoveryThinking", delta);
     } else if (row === "workerModel") {
       this.cycleModel("workerModel", delta);
     } else if (row === "workerThinking") {
@@ -188,7 +197,7 @@ class FusionPane {
     setModelChoice(this.settings, field, next);
   }
 
-  private cycleThinking(field: "workerThinking" | "synthesizerThinking", delta: -1 | 1): void {
+  private cycleThinking(field: "discoveryThinking" | "workerThinking" | "synthesizerThinking", delta: -1 | 1): void {
     const current = formatThinkingValue(this.settings[field]);
     const index = Math.max(0, THINKING_CHOICES.indexOf(current));
     const next = THINKING_CHOICES[(index + delta + THINKING_CHOICES.length) % THINKING_CHOICES.length] ?? "current";
@@ -282,7 +291,7 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 14, margin: 2 },
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 16, margin: 2 },
       },
     );
 
@@ -291,8 +300,8 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
 
     if (result.action === "save") return draft;
 
-    const field = result.action === "pick-worker-model" ? "workerModel" : "synthesizerModel";
-    const title = field === "workerModel" ? "Select worker model" : "Select synthesizer model";
+    const field = result.action === "pick-discovery-model" ? "discoveryModel" : result.action === "pick-worker-model" ? "workerModel" : "synthesizerModel";
+    const title = field === "discoveryModel" ? "Select discovery model" : field === "workerModel" ? "Select worker model" : "Select synthesizer model";
     const selected = await pickModel(ctx, title, draft[field], choices);
     if (selected !== null) setModelChoice(draft, field, selected);
   }
@@ -300,6 +309,7 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
 
 export interface FusionLiveWorkerState {
   index: number;
+  label: string;
   lens: string;
   status: "queued" | "running" | "done" | "failed" | "timed-out";
   output: string;
@@ -451,7 +461,7 @@ class FusionLivePanel {
     const outputLines = wrapPlainText(worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"), width, 10);
 
     return [
-      `${statusIcon} ${this.theme.fg("accent", `worker ${worker.index + 1}`)} ${this.theme.fg("muted", worker.lens)}`,
+      `${statusIcon} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}`,
       this.theme.fg("dim", "reasoning"),
       ...reasoningLines,
       "",

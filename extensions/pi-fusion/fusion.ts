@@ -11,8 +11,10 @@ export interface FusionSettings {
   workerOutputBytes: number;
   contextBytes: number;
   timeoutMs: number;
+  discoveryModel: string | undefined;
   workerModel: string | undefined;
   synthesizerModel: string | undefined;
+  discoveryThinking: FusionThinkingLevel | undefined;
   workerThinking: FusionThinkingLevel | undefined;
   synthesizerThinking: FusionThinkingLevel | undefined;
 }
@@ -28,8 +30,10 @@ export interface FusionFlags {
   "fusion-context-bytes"?: boolean | string;
   "fusion-timeout-ms"?: boolean | string;
   "fusion-model"?: boolean | string;
+  "fusion-discovery-model"?: boolean | string;
   "fusion-worker-model"?: boolean | string;
   "fusion-synthesizer-model"?: boolean | string;
+  "fusion-discovery-thinking"?: boolean | string;
   "fusion-worker-thinking"?: boolean | string;
   "fusion-synthesizer-thinking"?: boolean | string;
 }
@@ -45,6 +49,7 @@ export interface WorkerResult {
   ok: boolean;
   output: string;
   reasoning: string;
+  toolContext: string;
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
@@ -73,33 +78,18 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   workerOutputBytes: 12_000,
   contextBytes: 16_000,
   timeoutMs: 600_000,
+  discoveryModel: undefined,
   workerModel: undefined,
   synthesizerModel: undefined,
+  discoveryThinking: undefined,
   workerThinking: undefined,
   synthesizerThinking: undefined,
 };
 
 export const WORKER_LENSES: WorkerLens[] = [
-  {
-    name: "mapper",
-    prompt:
-      "Map the codebase surface area. Identify the files, symbols, commands, and existing patterns the actor should inspect before changing anything.",
-  },
-  {
-    name: "planner",
-    prompt:
-      "Produce a minimal implementation plan. Prefer small, reversible changes and call out the exact verification command you would run.",
-  },
-  {
-    name: "skeptic",
-    prompt:
-      "Look for risks, hidden requirements, edge cases, and likely failure modes. Suggest tests or manual checks that would catch them.",
-  },
-  {
-    name: "simplifier",
-    prompt:
-      "Find the simplest path that could satisfy the request. Challenge unnecessary abstractions, broad rewrites, and speculative work.",
-  },
+  { name: "#1", prompt: "Explore the assigned rewritten prompt." },
+  { name: "#2", prompt: "Explore the assigned rewritten prompt." },
+  { name: "#3", prompt: "Explore the assigned rewritten prompt." },
 ];
 
 export function parsePositiveInteger(
@@ -148,16 +138,22 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
     max: 3_600_000,
   });
 
+  const discoveryModelFlag = flags["fusion-discovery-model"];
   const workerModelFlag = flags["fusion-worker-model"] ?? flags["fusion-model"];
   const synthesizerModelFlag = flags["fusion-synthesizer-model"];
+  const discoveryThinkingFlag = flags["fusion-discovery-thinking"];
   const workerThinkingFlag = flags["fusion-worker-thinking"];
   const synthesizerThinkingFlag = flags["fusion-synthesizer-thinking"];
+  if (typeof discoveryModelFlag === "string") settings.discoveryModel = normalizeModelSpec(discoveryModelFlag);
   if (typeof workerModelFlag === "string") settings.workerModel = normalizeModelSpec(workerModelFlag);
   if (typeof synthesizerModelFlag === "string") settings.synthesizerModel = normalizeModelSpec(synthesizerModelFlag);
+  if (typeof discoveryThinkingFlag === "string") settings.discoveryThinking = normalizeThinkingChoice(discoveryThinkingFlag);
   if (typeof workerThinkingFlag === "string") settings.workerThinking = normalizeThinkingChoice(workerThinkingFlag);
   if (typeof synthesizerThinkingFlag === "string") settings.synthesizerThinking = normalizeThinkingChoice(synthesizerThinkingFlag);
+  settings.discoveryModel = normalizeModelSpec(settings.discoveryModel);
   settings.workerModel = normalizeModelSpec(settings.workerModel);
   settings.synthesizerModel = normalizeModelSpec(settings.synthesizerModel);
+  settings.discoveryThinking = normalizeThinkingChoice(settings.discoveryThinking);
   settings.workerThinking = normalizeThinkingChoice(settings.workerThinking);
   settings.synthesizerThinking = normalizeThinkingChoice(settings.synthesizerThinking);
 
@@ -194,24 +190,17 @@ export function truncateUtf8(input: string, maxBytes: number): string {
 }
 
 export function getWorkerLens(index: number): WorkerLens {
-  return WORKER_LENSES[index % WORKER_LENSES.length];
+  return { name: `#${index + 1}`, prompt: WORKER_LENSES[index % WORKER_LENSES.length]?.prompt ?? "Explore the assigned rewritten prompt." };
 }
 
-export function buildWorkerPrompt(input: {
-  task: string;
-  recentContext: string;
-  cwd: string;
-  workerIndex: number;
-  workerCount: number;
-  lens: WorkerLens;
-}): string {
+export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string }): string {
   const contextSection = input.recentContext.trim()
     ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
     : "";
 
-  return `You are worker ${input.workerIndex + 1}/${input.workerCount} in an LLM Fusion planning pass.
+  return `You are the discovery agent in an LLM Fusion pipeline.
 
-Your job is to spend tokens thinking and investigating before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. The only tools available to you should be read-only file/search tools.
+Your job is to gather reusable context before planner workers and the synthesizer run. Use read/search/list tools aggressively enough to reduce redundant downstream tool calls. Do not edit files. Do not implement anything.
 
 Working directory: ${input.cwd}
 
@@ -219,16 +208,96 @@ ${contextSection}## User request
 
 ${input.task.trim()}
 
-## Planning lens: ${input.lens.name}
+## Output contract
 
-${input.lens.prompt}
+Return markdown with:
+
+1. **Task understanding** — concise restatement.
+2. **Reusable context** — important files, symbols, APIs, commands, and snippets found through tools.
+3. **Likely next steps** — what downstream workers should focus on.
+4. **Open questions / risks** — only if relevant.
+
+Prefer concrete file paths and enough detail that workers and the synthesizer can avoid re-reading the same files.`;
+}
+
+export function buildRewritePrompt(input: { task: string; discoveryContext: string; workerCount: number }): string {
+  const discoverySection = input.discoveryContext.trim()
+    ? `## Discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 16_000)}\n\n`
+    : "";
+
+  return `Rewrite the user's request into ${input.workerCount} complementary exploration prompts for parallel planning workers.
+
+This is query rewriting, similar to RAG query expansion. The rewrites should explore the idea space from different useful angles without assigning named personas. Keep them specific and grounded in the original request.
+
+## User request
+
+${input.task.trim()}
+
+${discoverySection}## Output contract
+
+Return only a JSON array of ${input.workerCount} strings. No markdown, no explanation.`;
+}
+
+export function parsePromptVariations(output: string, workerCount: number, fallbackTask: string): string[] {
+  const trimmed = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (Array.isArray(parsed)) {
+      const variations = parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+      if (variations.length > 0) {
+        return Array.from({ length: workerCount }, (_, index) => variations[index] ?? variations[variations.length - 1] ?? fallbackTask);
+      }
+    }
+  } catch {
+    // Fall back to numbered/plain-line parsing below.
+  }
+
+  const lines = trimmed
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
+    .filter(Boolean);
+  const variations = lines.length > 0 ? lines : [fallbackTask];
+  return Array.from({ length: workerCount }, (_, index) => variations[index] ?? variations[variations.length - 1] ?? fallbackTask);
+}
+
+export function buildWorkerPrompt(input: {
+  task: string;
+  assignedPrompt: string;
+  recentContext: string;
+  discoveryContext: string;
+  cwd: string;
+  workerIndex: number;
+  workerCount: number;
+  lens: WorkerLens;
+}): string {
+  const recentSection = input.recentContext.trim()
+    ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
+    : "";
+  const discoverySection = input.discoveryContext.trim()
+    ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n`
+    : "";
+
+  return `You are worker ${input.lens.name} in an LLM Fusion planning pass.
+
+Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. Prefer the shared discovery context before making redundant tool calls; only read/search more when it adds new information.
+
+Working directory: ${input.cwd}
+
+${recentSection}${discoverySection}## Original user request
+
+${input.task.trim()}
+
+## Assigned rewritten exploration prompt
+
+${input.assignedPrompt.trim()}
 
 ## Output contract
 
 Return concise markdown with these sections:
 
-1. **Understanding** — what you think the user wants.
-2. **Relevant context** — files, symbols, patterns, or commands you inspected or recommend inspecting.
+1. **Understanding** — what this exploration prompt means for the original request.
+2. **Additional context** — only new files, symbols, patterns, or commands beyond discovery.
 3. **Plan** — concrete steps for the actor.
 4. **Risks and verification** — edge cases, tests, or manual checks.
 
@@ -249,21 +318,29 @@ export function formatWorkerForActor(result: WorkerResult, maxBytes: number): st
 
 export function buildActorPrompt(input: {
   originalText: string;
+  discoveryContext: string;
+  promptVariations: string[];
   workerResults: WorkerResult[];
   workerOutputBytes: number;
   imageCount: number;
 }): string {
   const workers = input.workerResults.map((result) => formatWorkerForActor(result, input.workerOutputBytes)).join("\n\n---\n\n");
   const imageNote = input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
+  const discovery = input.discoveryContext.trim()
+    ? `\n\n## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 24_000)}`
+    : "";
+  const variations = input.promptVariations.length > 0
+    ? `\n\n## Worker prompt variations\n\n${input.promptVariations.map((variation, index) => `${index + 1}. ${variation}`).join("\n")}`
+    : "";
 
   return `${ACTOR_PROMPT_MARKER}
 # LLM Fusion planning bundle
 
-The user's original request is below. Several read-only workers independently explored/planned first. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat worker output as advisory, not authoritative.${imageNote}
+The user's original request is below. A discovery agent gathered shared context, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.${imageNote}
 
 ## Original user request
 
-${input.originalText.trim()}
+${input.originalText.trim()}${discovery}${variations}
 
 ## Worker outputs
 
@@ -272,6 +349,7 @@ ${workers || "(no worker output)"}
 ## Actor instructions
 
 - Act on the original request, not on the workers' wording.
+- Use shared discovery context before re-reading files; avoid redundant tool calls unless verification or missing context requires them.
 - Use the workers to reduce blind spots, but verify before editing or running risky commands.
 - Keep your visible response natural; do not dump a long meta-synthesis unless the user asked for one.
 - If worker plans disagree, choose the smallest safe path and mention the tradeoff only if useful.`;
