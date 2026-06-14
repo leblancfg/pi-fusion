@@ -47,6 +47,7 @@ interface RunWorkerInput {
   model: string | undefined;
   thinkingLevel: string | undefined;
   tools?: string[] | "none";
+  signal?: AbortSignal;
   onLiveUpdate?: (index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>) => void;
 }
 
@@ -132,6 +133,17 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
       }
 
+      const onAbort = () => {
+        proc.kill("SIGTERM");
+        setTimeout(() => {
+          if (!proc.killed) proc.kill("SIGKILL");
+        }, 5_000).unref();
+      };
+      if (input.signal) {
+        if (input.signal.aborted) onAbort();
+        else input.signal.addEventListener("abort", onAbort, { once: true });
+      }
+
       let stdoutBuffer = "";
       let timeout: NodeJS.Timeout | undefined;
 
@@ -212,6 +224,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
 
       proc.on("close", (code) => {
         if (timeout) clearTimeout(timeout);
+        input.signal?.removeEventListener("abort", onAbort);
         if (stdoutBuffer.trim()) processLine(stdoutBuffer);
         resolve(code ?? 0);
       });
@@ -445,10 +458,17 @@ export default function piFusion(pi: ExtensionAPI): void {
     const workerThinking = settings.workerThinking ?? pi.getThinkingLevel();
     const discoveryModel = settings.discoveryModel ?? currentModel;
     const discoveryThinking = settings.discoveryThinking ?? pi.getThinkingLevel();
+    const abort = new AbortController();
+    const cancelFusion = () => abort.abort();
+    if (ctx.signal) {
+      if (ctx.signal.aborted) abort.abort();
+      else ctx.signal.addEventListener("abort", cancelFusion, { once: true });
+    }
     let activePanel = startFusionLivePanel(
       ctx,
       [{ index: 0, label: "discovery", lens: "context loading", status: "queued", output: "", reasoning: "", events: [] }],
       "LLM Fusion discovery",
+      cancelFusion,
     );
     if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion: discovery");
 
@@ -462,6 +482,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         model: workerModel,
         thinkingLevel: "minimal",
         tools: "none",
+        signal: abort.signal,
       });
 
       activePanel?.update(0, { status: "running" });
@@ -474,13 +495,16 @@ export default function piFusion(pi: ExtensionAPI): void {
         model: discoveryModel,
         thinkingLevel: discoveryThinking,
         tools: ["read", "grep", "find", "ls"],
+        signal: abort.signal,
         onLiveUpdate: (_index, patch) => activePanel?.update(0, patch),
       });
+      if (abort.signal.aborted) return undefined;
       const discoveryContext = buildSharedDiscoveryContext(discoveryResult);
       activePanel?.close();
       activePanel = undefined;
 
       const rewriteResult = await rewritePromise;
+      if (abort.signal.aborted) return undefined;
       const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
       const statusLines = promptVariations.map((_, index) => `⏳ worker ${index + 1}: ${getWorkerLens(index).name}`);
       setFusionStatus(ctx, statusLines);
@@ -494,7 +518,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         reasoning: "",
         events: [],
       }));
-      activePanel = startFusionLivePanel(ctx, workerStates, "LLM Fusion workers");
+      activePanel = startFusionLivePanel(ctx, workerStates, "LLM Fusion workers", cancelFusion);
 
       const workerPromises = promptVariations.map(async (variation, index) => {
         const lens = getWorkerLens(index);
@@ -516,6 +540,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           model: workerModel,
           thinkingLevel: workerThinking,
           tools: ["read", "grep", "find", "ls"],
+          signal: abort.signal,
           onLiveUpdate: (workerIndex, patch) => activePanel?.update(workerIndex, patch),
         });
         statusLines[index] = `${result.ok ? "✓" : "✗"} worker ${index + 1}: ${lens.name}`;
@@ -524,6 +549,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       });
 
       const workerResults = await Promise.all(workerPromises);
+      if (abort.signal.aborted) return undefined;
       if (settings.synthesizerModel) {
         const synthesizerModel = findModelBySpec(ctx, settings.synthesizerModel);
         if (!synthesizerModel) {
@@ -549,6 +575,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
       return undefined;
     } finally {
+      ctx.signal?.removeEventListener("abort", cancelFusion);
       activePanel?.close();
       setFusionStatus(ctx, undefined);
     }

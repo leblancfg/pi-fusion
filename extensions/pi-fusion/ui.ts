@@ -407,6 +407,7 @@ class FusionLivePanel {
     private readonly workers: FusionLiveWorkerState[],
     private readonly title: string,
     private readonly done: () => void,
+    private readonly onCancel?: () => void,
   ) {
     this.renderTimer = setInterval(() => {
       if (this.workers.some((worker) => worker.status === "running")) this.tui.requestRender();
@@ -435,7 +436,10 @@ class FusionLivePanel {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) this.close();
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
+      this.onCancel?.();
+      this.close();
+    }
   }
 
   render(width: number): string[] {
@@ -518,7 +522,12 @@ class FusionLivePanel {
   }
 }
 
-export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveWorkerState[], title = "LLM Fusion planners"): FusionLivePanelController | undefined {
+export function startFusionLivePanel(
+  ctx: ExtensionContext,
+  workers: FusionLiveWorkerState[],
+  title = "LLM Fusion planners",
+  onCancel?: () => void,
+): FusionLivePanelController | undefined {
   if (ctx.mode !== "tui") return undefined;
 
   let panel: FusionLivePanel | undefined;
@@ -527,7 +536,7 @@ export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveW
   void ctx.ui
     .custom<void>(
       (tui, theme, _keybindings, done) => {
-        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), title, done);
+        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), title, done, onCancel);
         close = () => panel?.close();
         return panel;
       },
