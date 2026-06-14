@@ -262,6 +262,7 @@ function readPersistedSettings(ctx: ExtensionContext): PersistedFusionSettings |
 
 function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings): FusionSettings {
   const flags: FusionFlags = {
+    "fusion-enabled": pi.getFlag("fusion-enabled"),
     "fusion-disabled": pi.getFlag("fusion-disabled"),
     "fusion-workers": pi.getFlag("fusion-workers"),
     "fusion-output-bytes": pi.getFlag("fusion-output-bytes"),
@@ -316,8 +317,13 @@ export default function piFusion(pi: ExtensionAPI): void {
   let settings: FusionSettings = { ...DEFAULT_SETTINGS };
   let armedForNextTurn = false;
 
+  pi.registerFlag("fusion-enabled", {
+    description: "Enable pi-fusion on startup (off by default; fusion multiplies token usage)",
+    type: "boolean",
+    default: false,
+  });
   pi.registerFlag("fusion-disabled", {
-    description: "Disable pi-fusion on startup",
+    description: "Force pi-fusion off on startup, overriding --fusion-enabled",
     type: "boolean",
     default: false,
   });

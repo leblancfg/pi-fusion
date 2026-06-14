@@ -30,6 +30,7 @@ export interface PersistedFusionSettings extends Partial<FusionSettings> {
 }
 
 export interface FusionFlags {
+  "fusion-enabled"?: boolean | string;
   "fusion-disabled"?: boolean | string;
   "fusion-workers"?: boolean | string;
   "fusion-output-bytes"?: boolean | string;
@@ -78,7 +79,7 @@ export interface BypassInput {
 }
 
 export const DEFAULT_SETTINGS: FusionSettings = {
-  enabled: true,
+  enabled: false,
   workerCount: 3,
   workers: [],
   workerOutputBytes: 12_000,
@@ -137,7 +138,9 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
 
   const settings = { ...DEFAULT_SETTINGS, ...persistedWithoutLegacy };
   settings.workerModel = settings.workerModel ?? normalizeModelSpec(persisted?.model);
-  settings.enabled = persisted?.enabled ?? flags["fusion-disabled"] !== true;
+  // Opt-in by default: fusion is off unless enabled via --fusion-enabled, a
+  // persisted /fusion on, or the settings pane. --fusion-disabled forces off.
+  settings.enabled = persisted?.enabled ?? (flags["fusion-enabled"] === true && flags["fusion-disabled"] !== true);
   settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
   settings.workerOutputBytes = parsePositiveInteger(flags["fusion-output-bytes"], settings.workerOutputBytes, {
     min: 1_000,

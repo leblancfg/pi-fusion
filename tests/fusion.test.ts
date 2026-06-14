@@ -89,11 +89,16 @@ describe("settings", () => {
     assert.equal(resolveSettings({ "fusion-worker-model": "current", "fusion-synthesizer-model": "default" }).workerModel, undefined);
   });
 
-  it("lets persisted enabled override the startup disable flag", () => {
-    const settings = resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 });
+  it("is opt-in: off by default, on with --fusion-enabled, forced off by --fusion-disabled", () => {
+    assert.equal(resolveSettings({}).enabled, false);
+    assert.equal(resolveSettings({ "fusion-enabled": true }).enabled, true);
+    assert.equal(resolveSettings({ "fusion-enabled": true, "fusion-disabled": true }).enabled, false);
+  });
 
-    assert.equal(settings.enabled, true);
-    assert.equal(settings.workerCount, 2);
+  it("lets persisted enabled override the startup flags", () => {
+    assert.equal(resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 }).enabled, true);
+    assert.equal(resolveSettings({ "fusion-enabled": true }, { enabled: false }).enabled, false);
+    assert.equal(resolveSettings({}, { workerCount: 2 }).workerCount, 2);
   });
 
   it("normalizes per-worker slots to match the worker count", () => {
