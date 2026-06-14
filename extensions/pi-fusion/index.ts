@@ -307,7 +307,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     default: false,
   });
   pi.registerFlag("fusion-workers", {
-    description: "Number of parallel pi-fusion workers (1-8, default 3)",
+    description: "Max parallel pi-fusion workers; the rewrite model picks how many up to this cap (1-8, default 3)",
     type: "string",
     default: String(DEFAULT_SETTINGS.workerCount),
   });
@@ -373,7 +373,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       ctx.ui.setWidget("pi-fusion", undefined);
       return;
     }
-    ctx.ui.setStatus("pi-fusion", `fusion ${lines.filter((line) => line.includes("✓") || line.includes("✗")).length}/${settings.workerCount}`);
+    ctx.ui.setStatus("pi-fusion", `fusion ${lines.filter((line) => line.includes("✓") || line.includes("✗")).length}/${lines.length}`);
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
@@ -453,20 +453,16 @@ export default function piFusion(pi: ExtensionAPI): void {
     const workerThinking = settings.workerThinking ?? pi.getThinkingLevel();
     const discoveryModel = settings.discoveryModel ?? currentModel;
     const discoveryThinking = settings.discoveryThinking ?? pi.getThinkingLevel();
-    const statusLines = Array.from({ length: settings.workerCount }, (_, index) => {
-      const lens = getWorkerLens(index);
-      return `⏳ worker ${index + 1}: ${lens.name}`;
-    });
     let activePanel = startFusionLivePanel(
       ctx,
       [{ index: 0, label: "discovery", lens: "context loading", status: "queued", output: "", reasoning: "", events: [] }],
       "LLM Fusion discovery",
     );
-    setFusionStatus(ctx, statusLines);
+    if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion: discovery");
 
     try {
       const rewritePromise = runWorker({
-        prompt: buildRewritePrompt({ task: event.text, recentContext, workerCount: settings.workerCount }),
+        prompt: buildRewritePrompt({ task: event.text, recentContext, maxWorkers: settings.workerCount }),
         cwd: ctx.cwd,
         index: 0,
         lens: "rewrite",
@@ -494,31 +490,28 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       const rewriteResult = await rewritePromise;
       const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, event.text);
-      const workerStates: FusionLiveWorkerState[] = Array.from({ length: settings.workerCount }, (_, index) => {
-        const lens = getWorkerLens(index);
-        return {
-          index,
-          label: lens.name,
-          lens: "worker",
-          prompt: promptVariations[index] ?? event.text,
-          status: "queued" as const,
-          output: "",
-          reasoning: "",
-          events: [],
-        };
-      });
+      const statusLines = promptVariations.map((_, index) => `⏳ worker ${index + 1}: ${getWorkerLens(index).name}`);
+      setFusionStatus(ctx, statusLines);
+      const workerStates: FusionLiveWorkerState[] = promptVariations.map((variation, index) => ({
+        index,
+        label: getWorkerLens(index).name,
+        lens: "worker",
+        prompt: variation,
+        status: "queued" as const,
+        output: "",
+        reasoning: "",
+        events: [],
+      }));
       activePanel = startFusionLivePanel(ctx, workerStates, "LLM Fusion workers");
 
-      const workerPromises = Array.from({ length: settings.workerCount }, async (_, index) => {
+      const workerPromises = promptVariations.map(async (variation, index) => {
         const lens = getWorkerLens(index);
         const prompt = buildWorkerPrompt({
           task: event.text,
-          assignedPrompt: promptVariations[index] ?? event.text,
+          assignedPrompt: variation,
           recentContext,
           discoveryContext,
           cwd: ctx.cwd,
-          workerIndex: index,
-          workerCount: settings.workerCount,
           lens,
         });
         activePanel?.update(index, { status: "running" });

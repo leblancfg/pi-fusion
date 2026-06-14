@@ -40,7 +40,6 @@ export interface FusionFlags {
 
 export interface WorkerLens {
   name: string;
-  prompt: string;
 }
 
 export interface WorkerResult {
@@ -85,12 +84,6 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   workerThinking: undefined,
   synthesizerThinking: undefined,
 };
-
-export const WORKER_LENSES: WorkerLens[] = [
-  { name: "#1", prompt: "Explore the assigned rewritten prompt." },
-  { name: "#2", prompt: "Explore the assigned rewritten prompt." },
-  { name: "#3", prompt: "Explore the assigned rewritten prompt." },
-];
 
 export function parsePositiveInteger(
   value: boolean | string | number | undefined,
@@ -190,7 +183,7 @@ export function truncateUtf8(input: string, maxBytes: number): string {
 }
 
 export function getWorkerLens(index: number): WorkerLens {
-  return { name: `#${index + 1}`, prompt: WORKER_LENSES[index % WORKER_LENSES.length]?.prompt ?? "Explore the assigned rewritten prompt." };
+  return { name: `#${index + 1}` };
 }
 
 export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string }): string {
@@ -221,14 +214,16 @@ Return a context handoff in markdown with:
 Prefer concrete file paths and enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`;
 }
 
-export function buildRewritePrompt(input: { task: string; recentContext: string; workerCount: number }): string {
+export function buildRewritePrompt(input: { task: string; recentContext: string; maxWorkers: number }): string {
   const contextSection = input.recentContext.trim()
     ? `## Recent conversation context (truncated)\n\n${truncateUtf8(input.recentContext.trim(), 8_000)}\n\n`
     : "";
 
-  return `Rewrite the user's request into ${input.workerCount} complementary exploration prompts for parallel planning workers.
+  return `Rewrite the user's request into a set of complementary exploration prompts for parallel planning workers.
 
-This is query rewriting, similar to RAG query expansion. The rewrites should explore the idea space from different useful angles without assigning named personas. Keep them specific and grounded in the original request.
+This is query rewriting, similar to RAG query expansion. Decide how many prompts the task genuinely warrants: use fewer for simple or narrow requests, more for broad, ambiguous, or multi-part ones. Take the recent context and any earlier iterations into account. Each prompt must explore a distinct, useful angle — do not pad with redundant angles to hit a number, and do not assign named personas. Keep them specific and grounded in the original request.
+
+Return between 1 and ${input.maxWorkers} prompts.
 
 ## User request
 
@@ -236,19 +231,23 @@ ${input.task.trim()}
 
 ${contextSection}## Output contract
 
-Return only a JSON array of ${input.workerCount} strings. No markdown, no explanation.`;
+Return only a JSON array of strings, length 1 to ${input.maxWorkers}. No markdown, no explanation.`;
 }
 
-export function parsePromptVariations(output: string, workerCount: number, fallbackTask: string): string[] {
+export function parsePromptVariations(output: string, maxWorkers: number, fallbackTask: string): string[] {
+  const cap = Math.max(1, maxWorkers);
   const trimmed = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  const clamp = (items: string[]): string[] => {
+    const cleaned = items.map((item) => item.trim()).filter(Boolean);
+    return cleaned.length > 0 ? cleaned.slice(0, cap) : [fallbackTask];
+  };
 
   try {
     const parsed = JSON.parse(trimmed) as unknown;
     if (Array.isArray(parsed)) {
-      const variations = parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-      if (variations.length > 0) {
-        return Array.from({ length: workerCount }, (_, index) => variations[index] ?? variations[variations.length - 1] ?? fallbackTask);
-      }
+      const variations = parsed.filter((item): item is string => typeof item === "string");
+      if (variations.some((item) => item.trim().length > 0)) return clamp(variations);
     }
   } catch {
     // Fall back to numbered/plain-line parsing below.
@@ -258,8 +257,7 @@ export function parsePromptVariations(output: string, workerCount: number, fallb
     .split("\n")
     .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
     .filter(Boolean);
-  const variations = lines.length > 0 ? lines : [fallbackTask];
-  return Array.from({ length: workerCount }, (_, index) => variations[index] ?? variations[variations.length - 1] ?? fallbackTask);
+  return clamp(lines);
 }
 
 export function buildWorkerPrompt(input: {
@@ -268,8 +266,6 @@ export function buildWorkerPrompt(input: {
   recentContext: string;
   discoveryContext: string;
   cwd: string;
-  workerIndex: number;
-  workerCount: number;
   lens: WorkerLens;
 }): string {
   const discoverySection = input.discoveryContext.trim()

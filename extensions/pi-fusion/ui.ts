@@ -147,7 +147,7 @@ class FusionPane {
 
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
-      this.renderSettingRow("workers", "Workers", String(this.settings.workerCount), "←/→"),
+      this.renderSettingRow("workers", "Max workers", String(this.settings.workerCount), "←/→ (cap)"),
       this.renderSettingRow("discoveryModel", "Discovery model", formatModelValue(this.settings.discoveryModel), "enter pick"),
       this.renderSettingRow("discoveryThinking", "Discovery reasoning", formatThinkingValue(this.settings.discoveryThinking), "←/→"),
       this.renderSettingRow("workerModel", "Worker model", formatModelValue(this.settings.workerModel), "enter pick"),
