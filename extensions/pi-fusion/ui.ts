@@ -1,12 +1,20 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
-import { THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice } from "./fusion.ts";
+import {
+  normalizeWorkerSlots,
+  THINKING_CHOICES,
+  type FusionSettings,
+  type FusionThinkingChoice,
+  type FusionThinkingLevel,
+} from "./fusion.ts";
 
 interface FusionPaneResult {
-  action: "save" | "cancel" | "pick-discovery-model" | "pick-worker-model" | "pick-synthesizer-model";
+  action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesizer-model" | "configure-workers";
   settings: FusionSettings;
 }
+
+type WorkerPaneResult = { action: "back" } | { action: "pick-model"; target: number; index: number };
 
 type ModelField = "discoveryModel" | "workerModel" | "synthesizerModel";
 
@@ -17,7 +25,7 @@ type ModelChoice = {
 };
 
 function cloneSettings(settings: FusionSettings): FusionSettings {
-  return { ...settings };
+  return { ...settings, workers: settings.workers.map((worker) => ({ ...worker })) };
 }
 
 function normalizeModelChoice(spec: string | undefined): string {
@@ -28,12 +36,19 @@ function setModelChoice(settings: FusionSettings, field: ModelField, spec: strin
   settings[field] = spec === "current" ? undefined : spec;
 }
 
-function formatModelValue(spec: string | undefined): string {
-  return spec ?? "current";
-}
-
 function formatThinkingValue(choice: string | undefined): FusionThinkingChoice {
   return (choice ?? "current") as FusionThinkingChoice;
+}
+
+function formatModelReasoning(model: string | undefined, thinking: FusionThinkingLevel | undefined, modelFallback = "current"): string {
+  return `${model ?? modelFallback} · ${thinking ?? modelFallback}`;
+}
+
+function cycleThinking(current: FusionThinkingLevel | undefined, delta: -1 | 1): FusionThinkingLevel | undefined {
+  const choice = formatThinkingValue(current);
+  const index = Math.max(0, THINKING_CHOICES.indexOf(choice));
+  const next = THINKING_CHOICES[(index + delta + THINKING_CHOICES.length) % THINKING_CHOICES.length] ?? "current";
+  return next === "current" ? undefined : next;
 }
 
 function modelSpecFromModel(model: ReturnType<ExtensionContext["modelRegistry"]["getAll"]>[number]): string {
@@ -76,22 +91,11 @@ function padToWidth(text: string, width: number): string {
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = [
-    "enabled",
-    "workers",
-    "discoveryModel",
-    "discoveryThinking",
-    "workerModel",
-    "workerThinking",
-    "synthesizerModel",
-    "synthesizerThinking",
-    "save",
-  ] as const;
+  private readonly rows = ["enabled", "workers", "discovery", "synthesizer", "save"] as const;
 
   constructor(
     private readonly theme: Theme,
     private readonly settings: FusionSettings,
-    private readonly modelSpecs: string[],
     private readonly done: (result: FusionPaneResult) => void,
     private readonly onToggleEnabled?: (enabled: boolean) => void,
   ) {}
@@ -130,9 +134,9 @@ class FusionPane {
       return;
     }
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      if (row === "discoveryModel") this.done({ action: "pick-discovery-model", settings: this.settings });
-      else if (row === "workerModel") this.done({ action: "pick-worker-model", settings: this.settings });
-      else if (row === "synthesizerModel") this.done({ action: "pick-synthesizer-model", settings: this.settings });
+      if (row === "workers") this.done({ action: "configure-workers", settings: this.settings });
+      else if (row === "discovery") this.done({ action: "pick-discovery-model", settings: this.settings });
+      else if (row === "synthesizer") this.done({ action: "pick-synthesizer-model", settings: this.settings });
       else if (row === "save") this.done({ action: "save", settings: this.settings });
       else this.adjust(row, 1);
     }
@@ -145,15 +149,12 @@ class FusionPane {
     const border = (text: string) => th.fg("border", text);
     const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
 
+    const workersValue = `${this.settings.workerCount}  ${th.fg("dim", "·")}  ${th.fg("accent", "configure ▸")}`;
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
-      this.renderSettingRow("workers", "Workers", String(this.settings.workerCount), "←/→"),
-      this.renderSettingRow("discoveryModel", "Discovery model", formatModelValue(this.settings.discoveryModel), "enter pick"),
-      this.renderSettingRow("discoveryThinking", "Discovery reasoning", formatThinkingValue(this.settings.discoveryThinking), "←/→"),
-      this.renderSettingRow("workerModel", "Worker model", formatModelValue(this.settings.workerModel), "enter pick"),
-      this.renderSettingRow("workerThinking", "Worker reasoning", formatThinkingValue(this.settings.workerThinking), "←/→"),
-      this.renderSettingRow("synthesizerModel", "Synth model", formatModelValue(this.settings.synthesizerModel), "enter pick"),
-      this.renderSettingRow("synthesizerThinking", "Synth reasoning", formatThinkingValue(this.settings.synthesizerThinking), "←/→"),
+      this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
+      this.renderSettingRow("discovery", "Discovery", formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking), "enter model • ←/→ effort"),
+      this.renderSettingRow("synthesizer", "Synthesizer", formatModelReasoning(this.settings.synthesizerModel, this.settings.synthesizerThinking), "enter model • ←/→ effort"),
       this.renderSettingRow("save", "Save and close", th.fg("accent", "enter"), "esc cancel"),
     ];
 
@@ -168,7 +169,7 @@ class FusionPane {
       row(""),
       ...rows.map((content) => row(content)),
       row(""),
-      row(` ${th.fg("dim", "↑↓ move • ←/→ adjust/cycle • Enter select/save • Esc cancel")}`),
+      row(` ${th.fg("dim", "↑↓ move • ←/→ adjust • Enter select • Esc cancel")}`),
       border(`╰${"─".repeat(innerWidth)}╯`),
     ];
   }
@@ -180,43 +181,110 @@ class FusionPane {
       this.toggleEnabled();
     } else if (row === "workers") {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
-    } else if (row === "discoveryModel") {
-      this.cycleModel("discoveryModel", delta);
-    } else if (row === "discoveryThinking") {
-      this.cycleThinking("discoveryThinking", delta);
-    } else if (row === "workerModel") {
-      this.cycleModel("workerModel", delta);
-    } else if (row === "workerThinking") {
-      this.cycleThinking("workerThinking", delta);
-    } else if (row === "synthesizerModel") {
-      this.cycleModel("synthesizerModel", delta);
-    } else if (row === "synthesizerThinking") {
-      this.cycleThinking("synthesizerThinking", delta);
+      this.settings.workers = normalizeWorkerSlots(this.settings.workers, this.settings.workerCount);
+    } else if (row === "discovery") {
+      this.settings.discoveryThinking = cycleThinking(this.settings.discoveryThinking, delta);
+    } else if (row === "synthesizer") {
+      this.settings.synthesizerThinking = cycleThinking(this.settings.synthesizerThinking, delta);
     }
-  }
-
-  private cycleModel(field: ModelField, delta: -1 | 1): void {
-    if (this.modelSpecs.length === 0) return;
-    const current = normalizeModelChoice(this.settings[field]);
-    const index = Math.max(0, this.modelSpecs.indexOf(current));
-    const next = this.modelSpecs[(index + delta + this.modelSpecs.length) % this.modelSpecs.length] ?? "current";
-    setModelChoice(this.settings, field, next);
-  }
-
-  private cycleThinking(field: "discoveryThinking" | "workerThinking" | "synthesizerThinking", delta: -1 | 1): void {
-    const current = formatThinkingValue(this.settings[field]);
-    const index = Math.max(0, THINKING_CHOICES.indexOf(current));
-    const next = THINKING_CHOICES[(index + delta + THINKING_CHOICES.length) % THINKING_CHOICES.length] ?? "current";
-    this.settings[field] = next === "current" ? undefined : next;
   }
 
   private renderSettingRow(row: (typeof this.rows)[number], label: string, value: string, hint: string): string {
     const isSelected = this.rows[this.selected] === row;
     const prefix = isSelected ? this.theme.fg("accent", "▶") : " ";
     const labelText = isSelected ? this.theme.fg("accent", label) : this.theme.fg("text", label);
-    const labelWidth = 20;
+    const labelWidth = 16;
     const hintText = hint ? this.theme.fg("dim", hint) : "";
-    return ` ${prefix} ${padToWidth(labelText, labelWidth)} ${value}${hintText ? ` ${hintText}` : ""}`;
+    return ` ${prefix} ${padToWidth(labelText, labelWidth)} ${value}${hintText ? `  ${hintText}` : ""}`;
+  }
+}
+
+class FusionWorkersPane {
+  private selected: number;
+  private readonly rowCount: number;
+
+  constructor(
+    private readonly theme: Theme,
+    private readonly settings: FusionSettings,
+    initialIndex: number,
+    private readonly done: (result: WorkerPaneResult) => void,
+  ) {
+    this.rowCount = settings.workers.length + 1;
+    this.selected = Math.max(0, Math.min(this.rowCount - 1, initialIndex));
+  }
+
+  handleInput(data: string): void {
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
+      this.done({ action: "back" });
+      return;
+    }
+    if (matchesKey(data, "up")) {
+      this.selected = Math.max(0, this.selected - 1);
+      return;
+    }
+    if (matchesKey(data, "down")) {
+      this.selected = Math.min(this.rowCount - 1, this.selected + 1);
+      return;
+    }
+    if (matchesKey(data, "left")) {
+      this.cycleReasoning(-1);
+      return;
+    }
+    if (matchesKey(data, "right")) {
+      this.cycleReasoning(1);
+      return;
+    }
+    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+      this.done({ action: "pick-model", target: this.selected - 1, index: this.selected });
+    }
+  }
+
+  private cycleReasoning(delta: -1 | 1): void {
+    if (this.selected === 0) {
+      this.settings.workerThinking = cycleThinking(this.settings.workerThinking, delta);
+      return;
+    }
+    const worker = this.settings.workers[this.selected - 1];
+    if (worker) worker.thinking = cycleThinking(worker.thinking, delta);
+  }
+
+  render(width: number): string[] {
+    const paneWidth = Math.max(2, Math.min(width, 78));
+    const innerWidth = Math.max(1, paneWidth - 2);
+    const th = this.theme;
+    const border = (text: string) => th.fg("border", text);
+    const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
+
+    const lines = [
+      this.renderRow(0, "All workers", formatModelReasoning(this.settings.workerModel, this.settings.workerThinking)),
+      ...this.settings.workers.map((worker, index) =>
+        this.renderRow(index + 1, `#${index + 1}`, formatModelReasoning(worker.model, worker.thinking, "default")),
+      ),
+    ];
+
+    const title = truncateToWidth(" Configure workers ", innerWidth, "", true);
+    const titleWidth = visibleWidth(title);
+    const left = "─".repeat(Math.max(0, Math.floor((innerWidth - titleWidth) / 2)));
+    const right = "─".repeat(Math.max(0, innerWidth - titleWidth - left.length));
+
+    return [
+      border(`╭${left}`) + th.fg("accent", th.bold(title)) + border(`${right}╮`),
+      row(` ${th.fg("dim", "per-worker model + reasoning; #N inherits 'All workers'")}`),
+      row(""),
+      ...lines.map((content) => row(content)),
+      row(""),
+      row(` ${th.fg("dim", "↑↓ move • ←/→ effort • Enter pick model • Esc back")}`),
+      border(`╰${"─".repeat(innerWidth)}╯`),
+    ];
+  }
+
+  invalidate(): void {}
+
+  private renderRow(index: number, label: string, value: string): string {
+    const isSelected = this.selected === index;
+    const prefix = isSelected ? this.theme.fg("accent", "▶") : " ";
+    const labelText = isSelected ? this.theme.fg("accent", label) : this.theme.fg("text", label);
+    return ` ${prefix} ${padToWidth(labelText, 14)} ${value}`;
   }
 }
 
@@ -268,6 +336,46 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
   );
 }
 
+async function configureWorkers(ctx: ExtensionContext, draft: FusionSettings, choices: ModelChoice[]): Promise<void> {
+  let selected = 0;
+
+  while (true) {
+    const result = await ctx.ui.custom<WorkerPaneResult>(
+      (tui, theme, _keybindings, done) => {
+        const pane = new FusionWorkersPane(theme, draft, selected, done);
+        return {
+          render(width: number) {
+            return pane.render(width);
+          },
+          invalidate() {
+            pane.invalidate();
+          },
+          handleInput(data: string) {
+            pane.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 18, margin: 2 },
+      },
+    );
+
+    if (!result || result.action === "back") return;
+    selected = result.index;
+
+    const target = result.target;
+    const currentSpec = target < 0 ? draft.workerModel : draft.workers[target]?.model;
+    const title = target < 0 ? "Select default worker model" : `Select model for worker #${target + 1}`;
+    const picked = await pickModel(ctx, title, currentSpec, choices);
+    if (picked === null) continue;
+    const model = picked === "current" ? undefined : picked;
+    if (target < 0) draft.workerModel = model;
+    else if (draft.workers[target]) draft.workers[target].model = model;
+  }
+}
+
 export async function showFusionPane(
   ctx: ExtensionContext,
   initialSettings: FusionSettings,
@@ -279,13 +387,12 @@ export async function showFusionPane(
   }
 
   const choices = getModelChoices(ctx);
-  const modelSpecs = choices.map((choice) => choice.spec);
   let draft = cloneSettings(initialSettings);
 
   while (true) {
     const result = await ctx.ui.custom<FusionPaneResult>(
       (tui, theme, _keybindings, done) => {
-        const pane = new FusionPane(theme, cloneSettings(draft), modelSpecs, done, (enabled) => {
+        const pane = new FusionPane(theme, cloneSettings(draft), done, (enabled) => {
           draft.enabled = enabled;
           onToggleEnabled?.(enabled);
         });
@@ -304,7 +411,7 @@ export async function showFusionPane(
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 16, margin: 2 },
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 14, margin: 2 },
       },
     );
 
@@ -313,8 +420,13 @@ export async function showFusionPane(
 
     if (result.action === "save") return draft;
 
-    const field = result.action === "pick-discovery-model" ? "discoveryModel" : result.action === "pick-worker-model" ? "workerModel" : "synthesizerModel";
-    const title = field === "discoveryModel" ? "Select discovery model" : field === "workerModel" ? "Select worker model" : "Select synthesizer model";
+    if (result.action === "configure-workers") {
+      await configureWorkers(ctx, draft, choices);
+      continue;
+    }
+
+    const field = result.action === "pick-discovery-model" ? "discoveryModel" : "synthesizerModel";
+    const title = field === "discoveryModel" ? "Select discovery model" : "Select synthesizer model";
     const selected = await pickModel(ctx, title, draft[field], choices);
     if (selected !== null) setModelChoice(draft, field, selected);
   }
