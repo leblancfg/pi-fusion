@@ -9,7 +9,7 @@ contribution loop is deliberately lightweight.
 pnpm install
 ```
 
-Node 20+ is required (see `.nvmrc`). pnpm is the package manager (pinned via
+Node 22+ is required (see `.nvmrc`). pnpm is the package manager (pinned via
 `packageManager` in `package.json`).
 
 ## Local checks

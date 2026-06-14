@@ -1,109 +1,141 @@
 # pi-fusion
 
-Standalone [pi](https://pi.dev) extension for experimenting with **LLM Fusion**: each normal user turn is expanded into a multi-stage flow:
+<p align="center">
+  <img src="docs/assets/social-preview.png" alt="pi-fusion: parallel read-only planners for pi" width="760">
+</p>
 
-1. Run a read-only discovery agent to gather reusable context.
-2. Run a quick query-rewrite pass to produce one complementary exploration prompt per worker.
-3. Run the configured number of read-only planner workers in parallel.
-4. Feed discovery context and bounded worker outputs to the normal actor turn, which synthesizes and acts.
+<p align="center">
+  <a href="https://github.com/leblancfg/pi-fusion/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leblancfg/pi-fusion/ci.yml?branch=main&style=flat-square"></a>
+  <a href="https://github.com/leblancfg/pi-fusion/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/leblancfg/pi-fusion?style=flat-square"></a>
+  <a href="https://pi.dev/packages"><img alt="pi package" src="https://img.shields.io/badge/pi-package-7c3aed?style=flat-square"></a>
+  <a href="https://leblancfg.github.io/pi-fusion/"><img alt="docs" src="https://img.shields.io/badge/docs-github%20pages-2563eb?style=flat-square"></a>
+</p>
 
-This is intentionally a rough testing harness, not a polished agent workflow.
-
-## Install
+## How to install
 
 ```bash
 pi install git:github.com/leblancfg/pi-fusion
 ```
 
-Or test locally from a checkout:
+Open pi and turn it on from the settings pane:
+
+```text
+/fusion
+```
+
+**pi-fusion adds a planning fanout to pi.** Before the normal actor turn starts, it runs one read-only discovery agent, rewrites your prompt into complementary angles, fans out to a few read-only planner workers, then injects their notes into the actor's system prompt for that turn.
+
+The practical version: spend a little latency to buy fewer blind spots before the agent edits your repo. I built it as a test harness, not a grand theory of agency. It is useful when the problem is fuzzy enough that one model path may miss something.
+
+Name collision note: OpenRouter now has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is different. It does not call OpenRouter Fusion, pick a hidden model panel, or use a judge model. It runs local read-only pi subprocesses against your working tree and hands their notes to the actor model you already chose.
+
+```mermaid
+flowchart LR
+  U[Your prompt] --> D["Discovery (optional)<br/>read, grep, find, ls"]
+  U --> R["Prompt rewrite (optional)<br/>no tools"]
+  D --> W1[Worker #1]
+  D --> W2[Worker #2]
+  D --> W3[Worker #3]
+  R --> W1
+  R --> W2
+  R --> W3
+  W1 --> A[Normal pi actor]
+  W2 --> A
+  W3 --> A
+  D --> A
+  A --> O[One final turn]
+```
+
+## Why this exists
+
+Coding agents often make the first plausible plan they see. That is fine for chores. It gets sketchier when a task has hidden coupling: unfamiliar code paths, unclear product constraints, or a suspicious test failure that smells like three separate bugs wearing one trench coat.
+
+pi-fusion is a tiny compound AI system for coding: multiple model calls at inference time, coordinated by boring TypeScript, merged back into one actor response. Same broad family as compound inference systems, inference-time scaling, test-time compute, model panels, multi-agent deliberation, and Mixture-of-Agents. Less grand when you run it locally. More useful, I think.
+
+The bet is simple: not all reasoning has to happen as one long serial chain inside the most expensive model. Some of it can run in parallel across slightly cheaper or dumber models, then get compressed into a single final turn. OpenAI's [o1 write-up](https://openai.com/index/learning-to-reason-with-llms/) made the test-time-compute axis feel obvious: give a model more thinking budget and it can do better. The compound-systems literature asks the neighboring question: what if some of that budget is more calls, more samples, or more agents instead of one longer hidden chain?
+
+A few useful breadcrumbs:
+
+- Berkeley BAIR's ["The Shift from Models to Compound AI Systems"](https://bair.berkeley.edu/blog/2024/02/18/compound-ai-systems/) defines compound AI systems as systems that use multiple interacting components: model calls, retrievers, tools, or control logic.
+- Chen et al., ["Are More LLM Calls All You Need?"](https://arxiv.org/abs/2403.02419), studies scaling laws for compound inference systems that aggregate multiple LM calls.
+- Snell et al., ["Scaling LLM Test-Time Compute Optimally"](https://arxiv.org/abs/2408.03314), frames inference-time compute as its own scaling axis.
+- Brown et al., ["Large Language Monkeys"](https://arxiv.org/abs/2407.21787), shows repeated sampling can amplify weaker models, sometimes cost-effectively.
+- Qi et al., ["Learning to Reason Across Parallel Samples"](https://arxiv.org/abs/2506.09014), studies aggregation across multiple sampled reasoning paths.
+- Wang et al., ["Mixture-of-Agents"](https://arxiv.org/abs/2406.04692), shows multiple LLM agents can improve final answer quality when their outputs are aggregated.
+
+My own evals point in the same direction for a subset of coding tasks: parallel planner calls can be cheaper, faster wall-clock, and better than sending everything straight to the biggest model. Not always. The whole point of this repo is to make that claim easy to test instead of treating it like a vibes-based architectural diagram.
+
+## What you see
+
+In TUI mode, a fused turn shows a live pane:
+
+1. **Discovery** loads shared context once.
+2. **Workers** appear as vertical splits, each with its own prompt angle.
+3. **Actor** starts after the planning bundle is ready.
+
+Useful controls:
+
+```text
+/fusion   open settings
+Esc       cancel the fanout and fall back to a normal turn
+1-9       focus one worker column
+0 / Tab   return to split view
+p         show or hide rewritten worker prompts
+```
+
+## When to use it
+
+Good fit:
+
+- "Find the bug, but I am not sure where it lives."
+- "Plan this refactor before touching files."
+- "Review this unfamiliar area and suggest the smallest safe change."
+- "Compare a few implementation paths before we commit to one."
+
+Bad fit:
+
+- Tiny edits where startup latency costs more than the task.
+- Prompts with images. The actor can see them; discovery and workers currently cannot.
+- Anything where read-only subprocesses are not allowed to inspect the working tree.
+- Fully non-interactive runs where you need progress output on stdout. pi-fusion stays quiet there so it does not corrupt print/JSON output.
+
+## Configure it
+
+Open the settings pane:
+
+```text
+/fusion
+```
+
+The five rows are intentionally boring:
+
+| Row            | What it changes                                        |
+| -------------- | ------------------------------------------------------ |
+| Enabled        | Turns fusion on or off for normal user prompts.        |
+| Workers        | Sets worker count and opens per-worker model settings. |
+| Discovery      | Picks the context-loading model and reasoning effort.  |
+| Synthesizer    | Picks the actor model and reasoning effort.            |
+| Save and close | Persists settings in the pi session.                   |
+
+CLI flags exist for repeatable starts:
 
 ```bash
-pi -e ./extensions/pi-fusion/index.ts
+pi --fusion-workers 4 \
+  --fusion-discovery-model anthropic/claude-haiku-4-5 \
+  --fusion-worker-model anthropic/claude-sonnet-4-5 \
+  --fusion-synthesizer-model openai/gpt-5.2-codex
 ```
 
-## What it does
-
-For each idle, non-command user input, the extension:
-
-- opens a live floating discovery pane in TUI mode;
-- runs query rewriting in parallel to discovery without its own pane;
-- after discovery finishes, replaces the discovery pane with live worker splits;
-- spawns standalone `pi` subprocesses in JSON print mode;
-- streams each visible subprocess's reasoning deltas, tool events, and output into its pane/column as JSON events arrive;
-- disables extensions in those subprocesses with `--no-extensions` to avoid recursive fusion;
-- runs discovery with read/search tools (`read,grep,find,ls`) and captures both its summary and tool-result context;
-- runs query rewriting with no tools using the worker model;
-- injects shared discovery context at the top of each worker prompt, before worker-specific instructions or rewrites;
-- gives each numbered worker (`#1`, `#2`, `#3`, ...) the original task, recent context, and one rewritten exploration prompt;
-- asks workers to return concise planning markdown;
-- leaves the user's message untouched in the session, and instead injects the planning bundle into that turn's system prompt (via `before_agent_start`) containing:
-  - the original request;
-  - shared discovery context;
-  - prompt variations;
-  - bounded worker outputs;
-  - instructions to synthesize, verify, and avoid redundant tool calls.
-
-Because the bundle goes into the per-turn system prompt rather than the user message, `/tree` and `/fork` still show your original prompt, and the heavy planning context does not persist across turns.
-
-The actor is the regular pi agent in the main session, with whatever tools/settings you already selected. By default it keeps your current model, but pi-fusion can optionally switch to a configured synthesizer model before the actor turn starts.
-
-## Discovery and query rewriting
-
-Discovery is a tunable first step with its own model and reasoning effort. Its job is to spend tool calls once, up front, and produce reusable context for the worker fanout and synthesizer.
-
-The rewrite step is a quick no-tool call using the worker model. It runs in parallel with discovery and rewrites the user request into one complementary exploration prompt per worker, similar to query expansion in RAG. You pick how many workers to spawn (`/fusion workers N`); the rewrite produces that many prompts. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas, and each worker pane can show its rewritten prompt.
-
-## UI
-
-Run `/fusion` with no arguments to open a floating settings pane.
-
-The pane is condensed to five rows:
-
-- **Enabled** — toggled with `Space`; this applies immediately, even if you close the pane with `Esc`.
-- **Workers** — `←/→` adjusts the worker count; `Enter` opens a per-worker config drill-down.
-- **Discovery** — shown as `model · reasoning`; `Enter` opens the searchable model picker, `←/→` cycles reasoning effort.
-- **Synthesizer** — same as Discovery, for the synthesizer/actor turn.
-- **Save and close**.
-
-The per-worker drill-down lets you set a different model and reasoning effort for every worker. It also has an **All workers** row that sets the default each `#N` inherits when it has no explicit override. Model selection everywhere goes through the floating searchable picker (type to filter), so you never arrow-cycle through long model lists.
-
-Keyboard controls:
+Use `current` or omit a model flag to keep the main session model. Reasoning values are:
 
 ```text
-↑/↓       move (loops around at the edges)
-←/→       adjust worker count or cycle reasoning effort
-Enter     open model picker / per-worker config / save
-Space     toggle enabled (applies immediately)
-Esc       cancel (the enabled toggle still sticks) / back out of the drill-down
+current, off, minimal, low, medium, high, xhigh
 ```
-
-## Live planner splits
-
-In TUI mode, each fused turn first shows a floating discovery pane by itself. When discovery finishes, the UI switches to worker vertical splits:
-
-- each worker gets its own column;
-- each worker header shows elapsed runtime and time since last update;
-- child process PIDs appear as lightweight events so you can see subprocesses start;
-- each worker column preloads the rewritten exploration prompt at the top;
-- reasoning streams into the `reasoning` section when the selected provider/model exposes thinking deltas;
-- assistant text streams into the `output` section;
-- read/search tool calls show as lightweight `→ tool` events.
-
-Panel controls:
-
-```text
-1-9   zoom a single worker column to full width
-0/Tab restore the split view
-p     toggle the rewritten-prompt block (collapsed by default)
-Esc   cancel the fanout (kills the subprocesses) and fall back to a normal turn
-```
-
-When the per-column width would drop below ~24 characters, the panel automatically degrades to a single focused column so output stays legible; use `1-9` to switch which worker is shown. The rewrite step is hidden because it is just prompt preparation and runs in parallel with discovery. The worker pane closes automatically when the planning pass finishes and the actor turn starts.
 
 ## Commands
 
 ```text
-/fusion                 # open floating pane
+/fusion                 # open floating settings pane
 /fusion status
 /fusion on
 /fusion off
@@ -125,13 +157,12 @@ When the per-column width would drop below ~24 characters, the panel automatical
 /fusion timeout 600000
 ```
 
-`/fusion model ...` is kept as an alias for `/fusion worker-model ...`. The `worker-model`/`worker-thinking` commands set the default for all workers; per-worker model and reasoning overrides are configured in the `/fusion` pane (Workers → configure).
-
-Settings changed through `/fusion` are persisted in the pi session via a custom entry.
+`/fusion model ...` is still accepted as an alias for `/fusion worker-model ...`.
 
 ## Startup flags
 
 ```bash
+pi --fusion-enabled
 pi --fusion-disabled
 pi --fusion-workers 3
 pi --fusion-discovery-model anthropic/claude-haiku-4-5
@@ -145,13 +176,24 @@ pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-`current` or omitting a model/thinking flag means "use/keep the current main-session value". `--fusion-model` is kept as a backwards-compatible alias for `--fusion-worker-model`.
+Fusion is off by default. Use `--fusion-enabled` to start with it on; `--fusion-disabled` forces it off. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`.
 
-Reasoning effort values are:
+## What gets sent where
 
-```text
-current, off, minimal, low, medium, high, xhigh
-```
+When fusion is enabled, each idle, non-command user input:
+
+- opens a live discovery pane in TUI mode;
+- runs query rewriting in parallel with discovery;
+- replaces discovery with live worker splits after discovery finishes;
+- starts standalone `pi` subprocesses in JSON print mode;
+- disables extensions in subprocesses with `--no-extensions` to avoid recursive fusion;
+- gives discovery only read/search/list tools: `read`, `grep`, `find`, `ls`;
+- gives query rewriting no tools;
+- injects shared discovery context into every worker prompt;
+- asks workers for concise planning markdown;
+- inserts the final planning bundle into the actor turn's system prompt via `before_agent_start`.
+
+The user's message stays untouched in the session. `/tree` and `/fork` still show the original prompt, and the planning bundle does not accumulate across turns.
 
 ## Bypasses
 
@@ -160,41 +202,59 @@ Fusion is skipped for:
 - slash commands and prompt templates (`/...`);
 - user bash (`!...`);
 - extension-injected input;
-- steering/follow-up messages queued while the agent is running;
-- prompts that are already fusion actor prompts.
+- steering or follow-up messages queued while the agent is running;
+- prompts that are already fusion actor prompts;
+- any turn where fusion is off.
 
-When fusion is disabled (via `/fusion off`, the settings pane, or `--fusion-disabled`), every turn is skipped and no subprocesses are spawned. These skips keep the behavior predictable and avoid recursion.
+These skips keep the extension predictable and avoid recursion.
 
 ## Context budget
 
-Worker output inserted into the actor turn's system prompt is capped per worker (`fusion-output-bytes`, default `12000`). Recent conversation context sent to discovery/workers is separately capped (`fusion-context-bytes`, default `16000`). Discovery tool-result context is bounded internally before being shared downstream.
+Worker output inserted into the actor turn is capped per worker (`fusion-output-bytes`, default `12000`). Recent conversation context sent to discovery and workers is capped separately (`fusion-context-bytes`, default `16000`). Discovery tool-result context is bounded before being shared downstream.
 
-Full worker transcripts are not stored separately. The session stores only your original message; the planning bundle lives in the per-turn system prompt and is regenerated each fused turn, so it never accumulates across turns.
+Full worker transcripts are not stored separately. The session stores your original message; the planning bundle lives in the per-turn system prompt and is regenerated each fused turn.
 
-## Rough edges to watch
+## Rough edges
 
-- Discovery/workers/rewrite are subprocesses, not true session forks. They receive a truncated text snapshot of recent conversation instead of the exact pi session tree.
-- Discovery and planner workers do not see attached images. The actor prompt warns the actor when images are present.
-- Worker subprocesses still load normal pi context files (`AGENTS.md`) but not extensions.
-- Discovery, rewrite, and worker planning block the turn at `before_agent_start` until the fanout finishes, times out, or you cancel with `Esc`.
-- The live split pane only appears in TUI mode; print/JSON/RPC still run fusion without that UI.
-- There is intentionally no progress output in print/JSON/RPC modes. pi gives extensions no sanctioned stderr/diagnostic channel, and stdout is the consumed payload (final text in print mode, the event stream in JSON mode), so emitting progress there would corrupt it. The fanout runs silently in those modes.
-- Some providers/models hide chain-of-thought, so a worker column may show no reasoning stream even when reasoning effort is enabled.
-- Discovery/worker tool access is intentionally very narrow: no `bash`, no write/edit.
-- Pipeline simplification (a discovery-bypass "lite" mode, merging the rewrite into discovery) is deliberately deferred; the current flow is two sequential LLM round-trips before the actor turn.
-- Print/JSON/RPC modes should work in principle, but the extension is mostly designed for interactive testing.
+- Discovery, rewrite, and worker planning block the turn until the fanout finishes, times out, or you cancel with `Esc`.
+- Discovery and workers are subprocesses, not true pi session forks. They receive a truncated text snapshot of recent conversation.
+- Discovery and workers do not see attached images.
+- Worker subprocesses still load normal pi context files such as `AGENTS.md`, but not extensions.
+- The live split pane only appears in TUI mode. Print, JSON, and RPC modes still run fusion without that UI.
+- Print, JSON, and RPC modes intentionally get no progress output. stdout is the consumed payload in those modes.
+- Some providers hide reasoning streams, so a worker column may show no reasoning even with reasoning enabled.
+- Discovery and worker tool access is narrow by design: no `bash`, no `write`, no `edit`.
+- The current pipeline uses two LLM round trips before the actor turn. A lighter mode may exist later, but the explicit flow is better for testing right now.
 
 ## Development
 
 ```bash
 pnpm install
+pnpm run check
+```
+
+Useful narrower checks:
+
+```bash
 pnpm test
 pnpm run typecheck
+pnpm run smoke
+```
+
+Project shape:
+
+```text
+extensions/pi-fusion/
+  fusion.ts   # pure logic: settings, prompts, parsing, bypass
+  index.ts    # subprocess fanout, lifecycle hooks, commands
+  ui.ts       # TUI settings pane and live worker panel
+tests/        # node:test tests for fusion.ts
+scripts/      # smoke test
 ```
 
 ## Package shape
 
-This package is standalone. It does not depend on the pi subagent example or any other extension.
+This package is standalone. It declares one pi extension:
 
 ```json
 {
@@ -203,3 +263,10 @@ This package is standalone. It does not depend on the pi subagent example or any
   }
 }
 ```
+
+## Links
+
+- Docs site: <https://leblancfg.github.io/pi-fusion/>
+- pi packages: <https://pi.dev/packages>
+- pi extension docs: <https://pi.dev/docs/extensions>
+- Issues: <https://github.com/leblancfg/pi-fusion/issues>

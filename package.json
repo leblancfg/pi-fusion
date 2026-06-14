@@ -1,12 +1,22 @@
 {
   "name": "pi-fusion",
   "version": "0.1.0",
-  "description": "Standalone LLM Fusion extension for pi: parallel read-only planners, then one actor turn.",
+  "description": "Compound AI planning fanout for pi: parallel read-only model calls, then one actor response.",
   "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension",
-    "llm-fusion"
+    "compound-ai",
+    "compound-ai-systems",
+    "compound-inference",
+    "test-time-compute",
+    "inference-time-scaling",
+    "multi-agent-planning",
+    "model-panels",
+    "coding-agent",
+    "developer-tools",
+    "parallel-agents",
+    "agent-planning"
   ],
   "license": "MIT",
   "packageManager": "pnpm@10.22.0",
@@ -22,7 +32,8 @@
   "pi": {
     "extensions": [
       "./extensions/pi-fusion/index.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/leblancfg/pi-fusion/main/docs/assets/social-preview.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -40,7 +51,7 @@
     "typescript-eslint": "^8.60.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "repository": {
     "type": "git",
@@ -49,5 +60,5 @@
   "bugs": {
     "url": "https://github.com/leblancfg/pi-fusion/issues"
   },
-  "homepage": "https://github.com/leblancfg/pi-fusion#readme"
+  "homepage": "https://leblancfg.github.io/pi-fusion/"
 }
