@@ -1,0 +1,36 @@
+{
+  "name": "pi-fusion",
+  "version": "0.1.0",
+  "description": "Standalone LLM Fusion extension for pi: parallel read-only planners, then one actor turn.",
+  "type": "module",
+  "keywords": ["pi-package", "pi-extension", "llm-fusion"],
+  "license": "MIT",
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": ["./extensions/pi-fusion/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.78.1",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leblancfg/pi-fusion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/leblancfg/pi-fusion/issues"
+  },
+  "homepage": "https://github.com/leblancfg/pi-fusion#readme"
+}
