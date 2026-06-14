@@ -385,10 +385,15 @@ export default function piFusion(pi: ExtensionAPI): void {
       const value = parts.slice(1).join(" ");
 
       if (!command || command === "ui") {
-        const updated = await showFusionPane(ctx, settings);
-        if (!updated) return;
-        settings = updated;
-        persist();
+        const updated = await showFusionPane(ctx, settings, (enabled) => {
+          settings.enabled = enabled;
+          persist();
+          if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", enabled ? undefined : "fusion off");
+        });
+        if (updated) {
+          settings = updated;
+          persist();
+        }
         ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
         return;
       }

@@ -93,7 +93,13 @@ class FusionPane {
     private readonly settings: FusionSettings,
     private readonly modelSpecs: string[],
     private readonly done: (result: FusionPaneResult) => void,
+    private readonly onToggleEnabled?: (enabled: boolean) => void,
   ) {}
+
+  private toggleEnabled(): void {
+    this.settings.enabled = !this.settings.enabled;
+    this.onToggleEnabled?.(this.settings.enabled);
+  }
 
   handleInput(data: string): void {
     if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
@@ -120,7 +126,7 @@ class FusionPane {
       return;
     }
     if (matchesKey(data, "space")) {
-      if (row === "enabled") this.settings.enabled = !this.settings.enabled;
+      if (row === "enabled") this.toggleEnabled();
       return;
     }
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
@@ -140,7 +146,7 @@ class FusionPane {
     const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
 
     const rows = [
-      this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space"),
+      this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
       this.renderSettingRow("workers", "Workers", String(this.settings.workerCount), "←/→"),
       this.renderSettingRow("discoveryModel", "Discovery model", formatModelValue(this.settings.discoveryModel), "enter pick"),
       this.renderSettingRow("discoveryThinking", "Discovery reasoning", formatThinkingValue(this.settings.discoveryThinking), "←/→"),
@@ -171,7 +177,7 @@ class FusionPane {
 
   private adjust(row: (typeof this.rows)[number], delta: -1 | 1): void {
     if (row === "enabled") {
-      this.settings.enabled = !this.settings.enabled;
+      this.toggleEnabled();
     } else if (row === "workers") {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
     } else if (row === "discoveryModel") {
@@ -262,7 +268,11 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
   );
 }
 
-export async function showFusionPane(ctx: ExtensionContext, initialSettings: FusionSettings): Promise<FusionSettings | undefined> {
+export async function showFusionPane(
+  ctx: ExtensionContext,
+  initialSettings: FusionSettings,
+  onToggleEnabled?: (enabled: boolean) => void,
+): Promise<FusionSettings | undefined> {
   if (ctx.mode !== "tui") {
     ctx.ui.notify("/fusion UI requires TUI mode", "error");
     return undefined;
@@ -275,7 +285,10 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
   while (true) {
     const result = await ctx.ui.custom<FusionPaneResult>(
       (tui, theme, _keybindings, done) => {
-        const pane = new FusionPane(theme, cloneSettings(draft), modelSpecs, done);
+        const pane = new FusionPane(theme, cloneSettings(draft), modelSpecs, done, (enabled) => {
+          draft.enabled = enabled;
+          onToggleEnabled?.(enabled);
+        });
         return {
           render(width: number) {
             return pane.render(width);

@@ -120,6 +120,13 @@ describe("bypass", () => {
       undefined,
     );
   });
+
+  it("bypasses every input when disabled so toggling off stops the fanout", () => {
+    assert.equal(
+      shouldBypassFusion({ enabled: false, text: "change the README", source: "interactive", streamingBehavior: undefined, isIdle: true }),
+      "disabled",
+    );
+  });
 });
 
 describe("prompts", () => {
