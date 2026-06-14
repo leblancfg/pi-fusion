@@ -168,10 +168,12 @@ describe("prompts", () => {
   it("builds discovery prompts that focus on context loading, not answering", () => {
     const prompt = buildDiscoveryPrompt({ task: "Fix the bug", recentContext: "", cwd: "/repo" });
 
-    assert.match(prompt, /load the relevant context/i);
+    assert.match(prompt, /load context for the rest of the team/i);
     assert.match(prompt, /do not answer/i);
+    assert.match(prompt, /not an analysis step/i);
+    assert.match(prompt, /opinions or conclusions of any kind/i);
     assert.match(prompt, /stop/i);
-    assert.doesNotMatch(prompt, /Likely next steps/);
+    assert.doesNotMatch(prompt, /why this context matters/i);
   });
 
   it("builds read-only numbered worker prompts with discovery context and assigned rewrite", () => {

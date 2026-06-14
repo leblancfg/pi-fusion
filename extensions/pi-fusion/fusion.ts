@@ -213,9 +213,9 @@ export function buildDiscoveryPrompt(input: { task: string; recentContext: strin
 
   return `You are the discovery agent in an LLM Fusion pipeline.
 
-Your task is to load the relevant context required for the rest of the team to use. Focus on setting up as many seemingly relevant read/search/list tool calls as needed so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
+Your only job is to load context for the rest of the team. Spend read/search/list tool calls to surface the files, symbols, APIs, commands, and snippets that look relevant to the request, so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
 
-Do not answer the user's request. Do not solve the problem. Do not create an implementation plan. Do not make recommendations beyond what context appears relevant. Do not edit files. When you have gathered the useful context handoff, stop.
+This is a mechanical gathering step, not an analysis step. Do not answer the user's request, solve the problem, plan an implementation, assess or rank relevance, judge quality, or make any recommendation. Do not offer opinions or conclusions of any kind — they would bias the workers. Do not edit files. When you have gathered the context, stop.
 
 Working directory: ${input.cwd}
 
@@ -227,11 +227,10 @@ ${input.task.trim()}
 
 Return a context handoff in markdown with:
 
-1. **Context loaded** — files, symbols, APIs, commands, snippets, and search results you inspected.
-2. **Why this context matters** — one short phrase per item, only to orient the team.
-3. **Gaps** — relevant context you could not load, if any.
+1. **Context loaded** — the files, symbols, APIs, commands, snippets, and search results you inspected, with concrete paths/line ranges and a neutral one-line note of what each contains (not why it matters or whether it is useful).
+2. **Gaps** — relevant context you could not load, if any.
 
-Prefer concrete file paths and enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`;
+State facts only. Include enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`;
 }
 
 export function buildRewritePrompt(input: { task: string; recentContext: string; workerCount: number }): string {
