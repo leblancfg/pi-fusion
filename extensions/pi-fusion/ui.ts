@@ -374,6 +374,8 @@ function wrapPlainText(text: string, width: number, maxLines: number): string[] 
   return ["…", ...lines.slice(lines.length - maxLines + 1)];
 }
 
+const MIN_COLUMN_WIDTH = 24;
+
 function splitWidths(total: number, count: number): number[] {
   const base = Math.max(1, Math.floor(total / count));
   const widths = Array.from({ length: count }, () => base);
@@ -399,6 +401,8 @@ function formatWorkerTiming(worker: FusionLiveWorkerState): string {
 
 class FusionLivePanel {
   private closed = false;
+  private focusIndex: number | null = null;
+  private showPrompts = false;
   private readonly renderTimer: ReturnType<typeof setInterval>;
 
   constructor(
@@ -439,49 +443,99 @@ class FusionLivePanel {
     if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
       this.onCancel?.();
       this.close();
+      return;
+    }
+    if (data === "p" || data === "P") {
+      this.showPrompts = !this.showPrompts;
+      this.tui.requestRender();
+      return;
+    }
+    if (data === "0" || matchesKey(data, "tab")) {
+      this.focusIndex = null;
+      this.tui.requestRender();
+      return;
+    }
+    if (data.length === 1 && data >= "1" && data <= "9") {
+      const index = Number(data) - 1;
+      if (index < this.workers.length) {
+        this.focusIndex = index;
+        this.tui.requestRender();
+      }
     }
   }
 
   render(width: number): string[] {
     const panelWidth = Math.max(20, Math.min(width, 160));
-    const count = Math.max(1, this.workers.length);
-    const contentWidth = Math.max(count, panelWidth - count - 1);
-    const colWidths = splitWidths(contentWidth, count);
+    const innerWidth = Math.max(1, panelWidth - 2);
     const border = (text: string) => this.theme.fg("border", text);
-    const separator = border("│");
+    const count = Math.max(1, this.workers.length);
+    const naturalCol = Math.floor((innerWidth - (count - 1)) / count);
+    const focus = this.effectiveFocus(count, naturalCol);
 
-    const borderLine = (left: string, middle: string, right: string, fill: string) =>
-      border(left) + colWidths.map((colWidth) => border(fill.repeat(colWidth))).join(border(middle)) + border(right);
-
-    const row = (cells: string[]) =>
-      separator +
-      cells
-        .map((cell, index) => {
-          const width = colWidths[index] ?? 1;
-          return padToWidth(truncateToWidth(cell, width, "…", true), width);
-        })
-        .join(separator) +
-      separator;
-
-    const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
-    const headerText = this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${this.workers.length} `));
-    const headerLine = truncateToWidth(headerText, Math.max(1, panelWidth - 2), "…", true);
-    const headerPadding = Math.max(0, panelWidth - 2 - visibleWidth(headerLine));
-
-    const workerLines = this.workers.map((worker, index) => this.renderWorker(worker, colWidths[index] ?? 1));
-    const maxWorkerLines = Math.max(...workerLines.map((lines) => lines.length));
     const lines = [
-      border(`╭${"─".repeat(panelWidth - 2)}╮`),
-      border("│") + headerLine + " ".repeat(headerPadding) + border("│"),
-      borderLine("├", "┬", "┤", "─"),
+      border(`╭${"─".repeat(innerWidth)}╮`),
+      this.wrapLine(this.headerText(), innerWidth, border),
+      this.wrapLine(this.tabBar(focus), innerWidth, border),
+      border(`├${"─".repeat(innerWidth)}┤`),
     ];
 
-    for (let lineIndex = 0; lineIndex < maxWorkerLines; lineIndex++) {
-      lines.push(row(workerLines.map((worker) => worker[lineIndex] ?? "")));
+    if (focus === null) {
+      const colWidths = splitWidths(Math.max(count, innerWidth - (count - 1)), count);
+      const separator = border("│");
+      const workerLines = this.workers.map((worker, index) =>
+        this.renderWorker(worker, colWidths[index] ?? 1, { showPrompt: this.showPrompts, reasoningLines: 4, outputLines: 8 }),
+      );
+      const maxLines = Math.max(...workerLines.map((cells) => cells.length));
+      for (let i = 0; i < maxLines; i++) {
+        const cells = workerLines.map((workerCells, index) => {
+          const colWidth = colWidths[index] ?? 1;
+          return padToWidth(truncateToWidth(workerCells[i] ?? "", colWidth, "…", true), colWidth);
+        });
+        lines.push(border("│") + cells.join(separator) + border("│"));
+      }
+    } else {
+      const body = this.renderWorker(this.workers[focus], innerWidth, { showPrompt: this.showPrompts, reasoningLines: 8, outputLines: 18 });
+      for (const line of body) lines.push(this.wrapLine(line, innerWidth, border));
     }
 
-    lines.push(borderLine("╰", "┴", "╯", "─"));
+    lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
     return lines;
+  }
+
+  private effectiveFocus(count: number, naturalCol: number): number | null {
+    if (this.focusIndex !== null && this.focusIndex >= 0 && this.focusIndex < count) return this.focusIndex;
+    if (count > 1 && naturalCol < MIN_COLUMN_WIDTH) return 0;
+    return null;
+  }
+
+  private wrapLine(line: string, innerWidth: number, border: (text: string) => string): string {
+    return border("│") + padToWidth(truncateToWidth(line, innerWidth, "…", true), innerWidth) + border("│");
+  }
+
+  private headerText(): string {
+    const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
+    return this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${this.workers.length} `));
+  }
+
+  private statusIcon(status: FusionLiveWorkerState["status"]): string {
+    return {
+      queued: this.theme.fg("dim", "○"),
+      running: this.theme.fg("warning", "⏳"),
+      done: this.theme.fg("success", "✓"),
+      failed: this.theme.fg("error", "✗"),
+      "timed-out": this.theme.fg("warning", "⌛"),
+    }[status];
+  }
+
+  private tabBar(focus: number | null): string {
+    const tabs = this.workers
+      .map((worker, index) => {
+        const label = `${index + 1}${this.statusIcon(worker.status)}`;
+        return index === focus ? this.theme.fg("accent", `[${label}]`) : this.theme.fg("muted", ` ${label} `);
+      })
+      .join("");
+    const controls = this.theme.fg("dim", focus === null ? "1-9 focus • p prompts • esc cancel" : "0 split • 1-9 switch • p prompts • esc cancel");
+    return ` ${tabs}   ${controls}`;
   }
 
   invalidate(): void {}
@@ -490,35 +544,29 @@ class FusionLivePanel {
     clearInterval(this.renderTimer);
   }
 
-  private renderWorker(worker: FusionLiveWorkerState, width: number): string[] {
-    const statusIcon = {
-      queued: this.theme.fg("dim", "○"),
-      running: this.theme.fg("warning", "⏳"),
-      done: this.theme.fg("success", "✓"),
-      failed: this.theme.fg("error", "✗"),
-      "timed-out": this.theme.fg("warning", "⌛"),
-    }[worker.status];
+  private renderWorker(
+    worker: FusionLiveWorkerState,
+    width: number,
+    opts: { showPrompt: boolean; reasoningLines: number; outputLines: number },
+  ): string[] {
+    const timing = formatWorkerTiming(worker);
+    const head = `${this.statusIcon(worker.status)} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}${timing ? this.theme.fg("dim", ` ${timing}`) : ""}`;
 
-    const promptLines = worker.prompt ? wrapPlainText(worker.prompt, width, 4) : [];
+    const promptBlock =
+      opts.showPrompt && worker.prompt ? [this.theme.fg("dim", "prompt"), ...wrapPlainText(worker.prompt, width, 4), ""] : [];
     const reasoningLines = wrapPlainText(
       worker.reasoning || (worker.status === "running" ? "(no reasoning stream yet; model/provider may hide it)" : "(no reasoning stream)"),
       width,
-      worker.prompt ? 4 : 6,
+      opts.reasoningLines,
     );
     const eventText = worker.events.length > 0 ? `\n${worker.events.map((event) => `→ ${event}`).join("\n")}` : "";
-    const outputLines = wrapPlainText(worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"), width, 10);
+    const outputLines = wrapPlainText(
+      worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"),
+      width,
+      opts.outputLines,
+    );
 
-    const timing = formatWorkerTiming(worker);
-
-    return [
-      `${statusIcon} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}${timing ? this.theme.fg("dim", ` ${timing}`) : ""}`,
-      ...(promptLines.length > 0 ? [this.theme.fg("dim", "prompt"), ...promptLines, ""] : []),
-      this.theme.fg("dim", "reasoning"),
-      ...reasoningLines,
-      "",
-      this.theme.fg("dim", "output"),
-      ...outputLines,
-    ];
+    return [head, ...promptBlock, this.theme.fg("dim", "reasoning"), ...reasoningLines, "", this.theme.fg("dim", "output"), ...outputLines];
   }
 }
 
