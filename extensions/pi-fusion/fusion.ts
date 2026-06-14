@@ -272,20 +272,20 @@ export function buildWorkerPrompt(input: {
   workerCount: number;
   lens: WorkerLens;
 }): string {
-  const recentSection = input.recentContext.trim()
-    ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
-    : "";
   const discoverySection = input.discoveryContext.trim()
     ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n`
     : "";
+  const recentSection = input.recentContext.trim()
+    ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
+    : "";
 
-  return `You are worker ${input.lens.name} in an LLM Fusion planning pass.
+  return `${discoverySection}You are worker ${input.lens.name} in an LLM Fusion planning pass.
 
-Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. Prefer the shared discovery context before making redundant tool calls; only read/search more when it adds new information.
+Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present.
 
 Working directory: ${input.cwd}
 
-${recentSection}${discoverySection}## Original user request
+${recentSection}## Original user request
 
 ${input.task.trim()}
 
@@ -328,20 +328,20 @@ export function buildActorPrompt(input: {
   const workers = input.workerResults.map((result) => formatWorkerForActor(result, input.workerOutputBytes)).join("\n\n---\n\n");
   const imageNote = input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
   const discovery = input.discoveryContext.trim()
-    ? `\n\n## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 24_000)}`
+    ? `## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 64_000)}\n\n`
     : "";
   const variations = input.promptVariations.length > 0
     ? `\n\n## Worker prompt variations\n\n${input.promptVariations.map((variation, index) => `${index + 1}. ${variation}`).join("\n")}`
     : "";
 
   return `${ACTOR_PROMPT_MARKER}
-# LLM Fusion planning bundle
+${discovery}# LLM Fusion planning bundle
 
-The user's original request is below. A discovery agent gathered shared context, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.${imageNote}
+A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.${imageNote}
 
 ## Original user request
 
-${input.originalText.trim()}${discovery}${variations}
+${input.originalText.trim()}${variations}
 
 ## Worker outputs
 

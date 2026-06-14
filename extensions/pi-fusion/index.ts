@@ -288,10 +288,13 @@ function findModelBySpec(ctx: ExtensionContext, spec: string): ReturnType<Extens
 
 function buildSharedDiscoveryContext(result: WorkerResult): string {
   return truncateUtf8(
-    [`## Discovery summary\n\n${result.output.trim() || "(no discovery summary)"}`, result.toolContext.trim() ? `## Discovery tool context\n\n${result.toolContext.trim()}` : ""]
+    [
+      result.toolContext.trim() ? `## Discovery tool context\n\n${result.toolContext.trim()}` : "",
+      `## Discovery context handoff\n\n${result.output.trim() || "(no discovery context handoff)"}`,
+    ]
       .filter(Boolean)
       .join("\n\n"),
-    48_000,
+    64_000,
   );
 }
 

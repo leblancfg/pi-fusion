@@ -150,6 +150,7 @@ describe("prompts", () => {
     assert.match(prompt, /do not modify files/);
     assert.match(prompt, /Working directory: \/repo/);
     assert.match(prompt, /Earlier context/);
+    assert.ok(prompt.indexOf("## Shared discovery context") < prompt.indexOf("You are worker #1"));
     assert.match(prompt, /Discovery context/);
     assert.match(prompt, /Add tests/);
     assert.match(prompt, /Explore API tests first/);
@@ -167,6 +168,7 @@ describe("prompts", () => {
     });
 
     assert.match(prompt, new RegExp(ACTOR_PROMPT_MARKER));
+    assert.ok(prompt.indexOf("## Shared discovery context") < prompt.indexOf("## Original user request"));
     assert.match(prompt, /Implement feature/);
     assert.match(prompt, /Workers did not see images/);
     assert.match(prompt, /Shared discovery context/);

@@ -33,11 +33,12 @@ For each idle, non-command user input, the extension:
 - disables extensions in those subprocesses with `--no-extensions` to avoid recursive fusion;
 - runs discovery with read/search tools (`read,grep,find,ls`) and captures both its summary and tool-result context;
 - runs query rewriting with no tools using the worker model;
-- gives each numbered worker (`#1`, `#2`, `#3`, ...) the original task, recent context, shared discovery context, and one rewritten exploration prompt;
+- injects shared discovery context at the top of each worker prompt, before worker-specific instructions or rewrites;
+- gives each numbered worker (`#1`, `#2`, `#3`, ...) the original task, recent context, and one rewritten exploration prompt;
 - asks workers to return concise planning markdown;
 - transforms the original user message into an actor prompt containing:
   - the original request;
-  - shared discovery context;
+  - shared discovery context at the top of the actor prompt;
   - prompt variations;
   - bounded worker outputs;
   - instructions to synthesize, verify, and avoid redundant tool calls.
