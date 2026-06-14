@@ -311,6 +311,7 @@ export interface FusionLiveWorkerState {
   index: number;
   label: string;
   lens: string;
+  prompt?: string;
   status: "queued" | "running" | "done" | "failed" | "timed-out";
   output: string;
   reasoning: string;
@@ -373,6 +374,7 @@ class FusionLivePanel {
     private readonly tui: TUI,
     private readonly theme: Theme,
     private readonly workers: FusionLiveWorkerState[],
+    private readonly title: string,
     private readonly done: () => void,
   ) {}
 
@@ -418,7 +420,7 @@ class FusionLivePanel {
       separator;
 
     const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
-    const headerText = this.theme.fg("accent", this.theme.bold(` LLM Fusion planners ${doneCount}/${this.workers.length} `));
+    const headerText = this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${this.workers.length} `));
     const headerLine = truncateToWidth(headerText, Math.max(1, panelWidth - 2), "…", true);
     const headerPadding = Math.max(0, panelWidth - 2 - visibleWidth(headerLine));
 
@@ -452,16 +454,18 @@ class FusionLivePanel {
       "timed-out": this.theme.fg("warning", "⌛"),
     }[worker.status];
 
+    const promptLines = worker.prompt ? wrapPlainText(worker.prompt, width, 4) : [];
     const reasoningLines = wrapPlainText(
       worker.reasoning || (worker.status === "running" ? "(no reasoning stream yet; model/provider may hide it)" : "(no reasoning stream)"),
       width,
-      6,
+      worker.prompt ? 4 : 6,
     );
     const eventText = worker.events.length > 0 ? `\n${worker.events.map((event) => `→ ${event}`).join("\n")}` : "";
     const outputLines = wrapPlainText(worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"), width, 10);
 
     return [
       `${statusIcon} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}`,
+      ...(promptLines.length > 0 ? [this.theme.fg("dim", "prompt"), ...promptLines, ""] : []),
       this.theme.fg("dim", "reasoning"),
       ...reasoningLines,
       "",
@@ -471,7 +475,7 @@ class FusionLivePanel {
   }
 }
 
-export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveWorkerState[]): FusionLivePanelController | undefined {
+export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveWorkerState[], title = "LLM Fusion planners"): FusionLivePanelController | undefined {
   if (ctx.mode !== "tui") return undefined;
 
   let panel: FusionLivePanel | undefined;
@@ -480,7 +484,7 @@ export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveW
   void ctx.ui
     .custom<void>(
       (tui, theme, _keybindings, done) => {
-        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), done);
+        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), title, done);
         close = () => panel?.close();
         return panel;
       },

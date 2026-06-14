@@ -200,29 +200,30 @@ export function buildDiscoveryPrompt(input: { task: string; recentContext: strin
 
   return `You are the discovery agent in an LLM Fusion pipeline.
 
-Your job is to gather reusable context before planner workers and the synthesizer run. Use read/search/list tools aggressively enough to reduce redundant downstream tool calls. Do not edit files. Do not implement anything.
+Your task is to load the relevant context required for the rest of the team to use. Focus on setting up as many seemingly relevant read/search/list tool calls as needed so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
+
+Do not answer the user's request. Do not solve the problem. Do not create an implementation plan. Do not make recommendations beyond what context appears relevant. Do not edit files. When you have gathered the useful context handoff, stop.
 
 Working directory: ${input.cwd}
 
-${contextSection}## User request
+${contextSection}## User request to gather context for
 
 ${input.task.trim()}
 
 ## Output contract
 
-Return markdown with:
+Return a context handoff in markdown with:
 
-1. **Task understanding** — concise restatement.
-2. **Reusable context** — important files, symbols, APIs, commands, and snippets found through tools.
-3. **Likely next steps** — what downstream workers should focus on.
-4. **Open questions / risks** — only if relevant.
+1. **Context loaded** — files, symbols, APIs, commands, snippets, and search results you inspected.
+2. **Why this context matters** — one short phrase per item, only to orient the team.
+3. **Gaps** — relevant context you could not load, if any.
 
-Prefer concrete file paths and enough detail that workers and the synthesizer can avoid re-reading the same files.`;
+Prefer concrete file paths and enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`;
 }
 
-export function buildRewritePrompt(input: { task: string; discoveryContext: string; workerCount: number }): string {
-  const discoverySection = input.discoveryContext.trim()
-    ? `## Discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 16_000)}\n\n`
+export function buildRewritePrompt(input: { task: string; recentContext: string; workerCount: number }): string {
+  const contextSection = input.recentContext.trim()
+    ? `## Recent conversation context (truncated)\n\n${truncateUtf8(input.recentContext.trim(), 8_000)}\n\n`
     : "";
 
   return `Rewrite the user's request into ${input.workerCount} complementary exploration prompts for parallel planning workers.
@@ -233,7 +234,7 @@ This is query rewriting, similar to RAG query expansion. The rewrites should exp
 
 ${input.task.trim()}
 
-${discoverySection}## Output contract
+${contextSection}## Output contract
 
 Return only a JSON array of ${input.workerCount} strings. No markdown, no explanation.`;
 }

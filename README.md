@@ -25,9 +25,11 @@ pi -e ./extensions/pi-fusion/index.ts
 
 For each idle, non-command user input, the extension:
 
-- opens a live floating split pane in TUI mode, with columns for discovery, rewrite, and each worker;
+- opens a live floating discovery pane in TUI mode;
+- runs query rewriting in parallel to discovery without its own pane;
+- after discovery finishes, replaces the discovery pane with live worker splits;
 - spawns standalone `pi` subprocesses in JSON print mode;
-- streams each subprocess's reasoning deltas, tool events, and output into its column as JSON events arrive;
+- streams each visible subprocess's reasoning deltas, tool events, and output into its pane/column as JSON events arrive;
 - disables extensions in those subprocesses with `--no-extensions` to avoid recursive fusion;
 - runs discovery with read/search tools (`read,grep,find,ls`) and captures both its summary and tool-result context;
 - runs query rewriting with no tools using the worker model;
@@ -46,7 +48,7 @@ The actor is the regular pi agent in the main session, with whatever tools/setti
 
 Discovery is a tunable first step with its own model and reasoning effort. Its job is to spend tool calls once, up front, and produce reusable context for the worker fanout and synthesizer.
 
-The rewrite step is a quick no-tool call using the worker model. It rewrites the user request into one complementary exploration prompt per worker, similar to query expansion in RAG. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas.
+The rewrite step is a quick no-tool call using the worker model. It runs in parallel with discovery and rewrites the user request into one complementary exploration prompt per worker, similar to query expansion in RAG. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas, and each worker pane shows its rewritten prompt at the top.
 
 ## UI
 
@@ -77,14 +79,15 @@ Model rows also open a floating searchable picker with `Enter`.
 
 ## Live planner splits
 
-In TUI mode, each fused turn shows a floating live panel while workers are running. It behaves like vertical splits:
+In TUI mode, each fused turn first shows a floating discovery pane by itself. When discovery finishes, the UI switches to worker vertical splits:
 
-- discovery, rewrite, and each worker get their own columns;
+- each worker gets its own column;
+- each worker column preloads the rewritten exploration prompt at the top;
 - reasoning streams into the `reasoning` section when the selected provider/model exposes thinking deltas;
 - assistant text streams into the `output` section;
 - read/search tool calls show as lightweight `→ tool` events.
 
-Press `Esc` while the panel is focused to hide it without cancelling the workers. The pane closes automatically when the planning pass finishes and the actor turn starts.
+The rewrite step is hidden because it is just prompt preparation and runs in parallel with discovery. Press `Esc` while a panel is focused to hide it without cancelling the subprocesses. The worker pane closes automatically when the planning pass finishes and the actor turn starts.
 
 ## Commands
 

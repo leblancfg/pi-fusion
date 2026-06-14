@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   ACTOR_PROMPT_MARKER,
   buildActorPrompt,
+  buildDiscoveryPrompt,
   buildWorkerPrompt,
   collectRecentConversation,
   getWorkerLens,
@@ -122,6 +123,15 @@ describe("bypass", () => {
 });
 
 describe("prompts", () => {
+  it("builds discovery prompts that focus on context loading, not answering", () => {
+    const prompt = buildDiscoveryPrompt({ task: "Fix the bug", recentContext: "", cwd: "/repo" });
+
+    assert.match(prompt, /load the relevant context/i);
+    assert.match(prompt, /do not answer/i);
+    assert.match(prompt, /stop/i);
+    assert.doesNotMatch(prompt, /Likely next steps/);
+  });
+
   it("builds read-only numbered worker prompts with discovery context and assigned rewrite", () => {
     const lens = getWorkerLens(0);
     const prompt = buildWorkerPrompt({

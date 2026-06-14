@@ -445,19 +445,26 @@ export default function piFusion(pi: ExtensionAPI): void {
       const lens = getWorkerLens(index);
       return `⏳ worker ${index + 1}: ${lens.name}`;
     });
-    const liveStates: FusionLiveWorkerState[] = [
-      { index: 0, label: "discovery", lens: "shared context", status: "queued", output: "", reasoning: "", events: [] },
-      { index: 1, label: "rewrite", lens: "query expansion", status: "queued", output: "", reasoning: "", events: [] },
-      ...Array.from({ length: settings.workerCount }, (_, index) => {
-        const lens = getWorkerLens(index);
-        return { index: index + 2, label: lens.name, lens: "worker", status: "queued" as const, output: "", reasoning: "", events: [] };
-      }),
-    ];
-    const livePanel = startFusionLivePanel(ctx, liveStates);
+    let activePanel = startFusionLivePanel(
+      ctx,
+      [{ index: 0, label: "discovery", lens: "context loading", status: "queued", output: "", reasoning: "", events: [] }],
+      "LLM Fusion discovery",
+    );
     setFusionStatus(ctx, statusLines);
 
     try {
-      livePanel?.update(0, { status: "running" });
+      const rewritePromise = runWorker({
+        prompt: buildRewritePrompt({ task: event.text, recentContext, workerCount: settings.workerCount }),
+        cwd: ctx.cwd,
+        index: 0,
+        lens: "rewrite",
+        timeoutMs: Math.min(settings.timeoutMs, 120_000),
+        model: workerModel,
+        thinkingLevel: "minimal",
+        tools: "none",
+      });
+
+      activePanel?.update(0, { status: "running" });
       const discoveryResult = await runWorker({
         prompt: buildDiscoveryPrompt({ task: event.text, recentContext, cwd: ctx.cwd }),
         cwd: ctx.cwd,
@@ -467,26 +474,30 @@ export default function piFusion(pi: ExtensionAPI): void {
         model: discoveryModel,
         thinkingLevel: discoveryThinking,
         tools: ["read", "grep", "find", "ls"],
-        onLiveUpdate: (_index, patch) => livePanel?.update(0, patch),
+        onLiveUpdate: (_index, patch) => activePanel?.update(0, patch),
       });
       const discoveryContext = buildSharedDiscoveryContext(discoveryResult);
+      activePanel?.close();
+      activePanel = undefined;
 
-      livePanel?.update(1, { status: "running" });
-      const rewriteResult = await runWorker({
-        prompt: buildRewritePrompt({ task: event.text, discoveryContext, workerCount: settings.workerCount }),
-        cwd: ctx.cwd,
-        index: 0,
-        lens: "rewrite",
-        timeoutMs: Math.min(settings.timeoutMs, 120_000),
-        model: workerModel,
-        thinkingLevel: "minimal",
-        tools: "none",
-        onLiveUpdate: (_index, patch) => livePanel?.update(1, patch),
-      });
+      const rewriteResult = await rewritePromise;
       const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, event.text);
+      const workerStates: FusionLiveWorkerState[] = Array.from({ length: settings.workerCount }, (_, index) => {
+        const lens = getWorkerLens(index);
+        return {
+          index,
+          label: lens.name,
+          lens: "worker",
+          prompt: promptVariations[index] ?? event.text,
+          status: "queued" as const,
+          output: "",
+          reasoning: "",
+          events: [],
+        };
+      });
+      activePanel = startFusionLivePanel(ctx, workerStates, "LLM Fusion workers");
 
       const workerPromises = Array.from({ length: settings.workerCount }, async (_, index) => {
-        const liveIndex = index + 2;
         const lens = getWorkerLens(index);
         const prompt = buildWorkerPrompt({
           task: event.text,
@@ -498,7 +509,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           workerCount: settings.workerCount,
           lens,
         });
-        livePanel?.update(liveIndex, { status: "running" });
+        activePanel?.update(index, { status: "running" });
         const result = await runWorker({
           prompt,
           cwd: ctx.cwd,
@@ -508,7 +519,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           model: workerModel,
           thinkingLevel: workerThinking,
           tools: ["read", "grep", "find", "ls"],
-          onLiveUpdate: (_workerIndex, patch) => livePanel?.update(liveIndex, patch),
+          onLiveUpdate: (workerIndex, patch) => activePanel?.update(workerIndex, patch),
         });
         statusLines[index] = `${result.ok ? "✓" : "✗"} worker ${index + 1}: ${lens.name}`;
         setFusionStatus(ctx, statusLines);
@@ -543,7 +554,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
       return { action: "continue" as const };
     } finally {
-      livePanel?.close();
+      activePanel?.close();
       setFusionStatus(ctx, undefined);
     }
   });
