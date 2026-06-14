@@ -321,7 +321,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     default: false,
   });
   pi.registerFlag("fusion-workers", {
-    description: "Max parallel pi-fusion workers; the rewrite model picks how many up to this cap (1-8, default 3)",
+    description: "Number of parallel pi-fusion workers (1-8, default 3)",
     type: "string",
     default: String(DEFAULT_SETTINGS.workerCount),
   });
@@ -474,7 +474,7 @@ export default function piFusion(pi: ExtensionAPI): void {
 
     try {
       const rewritePromise = runWorker({
-        prompt: buildRewritePrompt({ task, recentContext, maxWorkers: settings.workerCount }),
+        prompt: buildRewritePrompt({ task, recentContext, workerCount: settings.workerCount }),
         cwd: ctx.cwd,
         index: 0,
         lens: "rewrite",

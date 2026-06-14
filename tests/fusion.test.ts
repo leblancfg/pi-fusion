@@ -182,18 +182,17 @@ describe("prompts", () => {
     assert.match(prompt, /pi-fusion truncated/);
     assert.ok(Buffer.byteLength(prompt, "utf8") < 2_000);
   });
-  it("asks the rewrite model to choose its own number of prompts up to the cap", () => {
-    const prompt = buildRewritePrompt({ task: "Add tests", recentContext: "", maxWorkers: 4 });
-    assert.match(prompt, /between 1 and 4 prompts/);
-    assert.match(prompt, /Decide how many/i);
-    assert.doesNotMatch(prompt, /into 4 complementary/);
+  it("asks the rewrite model for exactly the configured number of prompts", () => {
+    const prompt = buildRewritePrompt({ task: "Add tests", recentContext: "", workerCount: 4 });
+    assert.match(prompt, /into 4 complementary exploration prompts/);
+    assert.match(prompt, /JSON array of 4 strings/);
   });
 
-  it("returns the model's chosen rewrite count, clamped to the max, with a single fallback", () => {
-    assert.deepEqual(parsePromptVariations('["one", "two"]', 3, "fallback"), ["one", "two"]);
+  it("parses query rewrite JSON and pads/truncates to the worker count", () => {
+    assert.deepEqual(parsePromptVariations('["one", "two"]', 3, "fallback"), ["one", "two", "two"]);
     assert.deepEqual(parsePromptVariations('["a","b","c","d"]', 3, "fallback"), ["a", "b", "c"]);
-    assert.deepEqual(parsePromptVariations("1. one\n2. two", 5, "fallback"), ["one", "two"]);
-    assert.deepEqual(parsePromptVariations("", 3, "fallback"), ["fallback"]);
+    assert.deepEqual(parsePromptVariations("1. one\n2. two", 2, "fallback"), ["one", "two"]);
+    assert.deepEqual(parsePromptVariations("", 2, "fallback"), ["fallback", "fallback"]);
   });
 });
 

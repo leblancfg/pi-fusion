@@ -3,8 +3,8 @@
 Standalone [pi](https://pi.dev) extension for experimenting with **LLM Fusion**: each normal user turn is expanded into a multi-stage flow:
 
 1. Run a read-only discovery agent to gather reusable context.
-2. Run a quick query-rewrite pass, where the model decides how many complementary worker prompts the task warrants.
-3. Run those read-only planner workers in parallel.
+2. Run a quick query-rewrite pass to produce one complementary exploration prompt per worker.
+3. Run the configured number of read-only planner workers in parallel.
 4. Feed discovery context and bounded worker outputs to the normal actor turn, which synthesizes and acts.
 
 This is intentionally a rough testing harness, not a polished agent workflow.
@@ -51,7 +51,7 @@ The actor is the regular pi agent in the main session, with whatever tools/setti
 
 Discovery is a tunable first step with its own model and reasoning effort. Its job is to spend tool calls once, up front, and produce reusable context for the worker fanout and synthesizer.
 
-The rewrite step is a quick no-tool call using the worker model. It runs in parallel with discovery and rewrites the user request into complementary exploration prompts, similar to query expansion in RAG. The extension is not opinionated about personas or counts: the rewrite model decides how many prompts (and therefore how many workers) the task warrants, up to the configured max-workers cap. The fanout, live panel, and status are sized from what the model returns. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas, and each worker pane can show its rewritten prompt.
+The rewrite step is a quick no-tool call using the worker model. It runs in parallel with discovery and rewrites the user request into one complementary exploration prompt per worker, similar to query expansion in RAG. You pick how many workers to spawn (`/fusion workers N`); the rewrite produces that many prompts. Workers are numbered (`#1`, `#2`, `#3`, ...) rather than assigned editorial personas, and each worker pane can show its rewritten prompt.
 
 ## UI
 
@@ -60,7 +60,7 @@ Run `/fusion` with no arguments to open a floating settings pane.
 From the pane you can tweak:
 
 - whether fusion is enabled (this applies immediately, even if you close the pane with `Esc`);
-- the max number of worker planners (a ceiling; the rewrite model picks the actual count);
+- the number of worker planners;
 - the discovery model;
 - the discovery reasoning effort;
 - the worker model;
@@ -72,7 +72,7 @@ Keyboard controls:
 
 ```text
 ↑/↓       move
-←/→       adjust max workers or cycle model/reasoning values
+←/→       adjust worker count or cycle model/reasoning values
 Enter     pick a model or save
 Space     toggle enabled (applies immediately)
 Esc       cancel (the enabled toggle still sticks)
@@ -110,7 +110,7 @@ When the per-column width would drop below ~24 characters, the panel automatical
 /fusion status
 /fusion on
 /fusion off
-/fusion workers 4         # max workers (cap); the rewrite model picks the actual count
+/fusion workers 4
 /fusion discovery-model anthropic/claude-haiku-4-5
 /fusion discovery-model current
 /fusion discovery-thinking low
@@ -136,7 +136,7 @@ Settings changed through `/fusion` are persisted in the pi session via a custom 
 
 ```bash
 pi --fusion-disabled
-pi --fusion-workers 3            # max workers (cap), not a fixed count
+pi --fusion-workers 3
 pi --fusion-discovery-model anthropic/claude-haiku-4-5
 pi --fusion-discovery-thinking low
 pi --fusion-worker-model anthropic/claude-sonnet-4-5
