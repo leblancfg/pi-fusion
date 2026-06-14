@@ -390,7 +390,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       ctx.ui.setWidget("pi-fusion", undefined);
       return;
     }
-    ctx.ui.setStatus("pi-fusion", `fusion ${lines.filter((line) => line.includes("✓") || line.includes("✗")).length}/${lines.length}`);
+    ctx.ui.setStatus("pi-fusion", `fusion ${lines.filter((line) => line.includes("●") || line.includes("⊘")).length}/${lines.length}`);
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
@@ -516,7 +516,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       const rewriteResult = await rewritePromise;
       if (abort.signal.aborted) return undefined;
       const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
-      const statusLines = promptVariations.map((_, index) => `⏳ worker ${index + 1}: ${getWorkerLens(index).name}`);
+      const statusLines = promptVariations.map((_, index) => `○ worker ${index + 1}: ${getWorkerLens(index).name}`);
       setFusionStatus(ctx, statusLines);
       const workerStates: FusionLiveWorkerState[] = promptVariations.map((variation, index) => ({
         index,
@@ -553,7 +553,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           signal: abort.signal,
           onLiveUpdate: (workerIndex, patch) => activePanel?.update(workerIndex, patch),
         });
-        statusLines[index] = `${result.ok ? "✓" : "✗"} worker ${index + 1}: ${lens.name}`;
+        statusLines[index] = `${result.ok ? "●" : "⊘"} worker ${index + 1}: ${lens.name}`;
         setFusionStatus(ctx, statusLines);
         return result;
       });

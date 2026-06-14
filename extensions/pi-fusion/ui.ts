@@ -638,10 +638,10 @@ class FusionLivePanel {
   private statusIcon(status: FusionLiveWorkerState["status"]): string {
     return {
       queued: this.theme.fg("dim", "○"),
-      running: this.theme.fg("warning", "⏳"),
-      done: this.theme.fg("success", "✓"),
-      failed: this.theme.fg("error", "✗"),
-      "timed-out": this.theme.fg("warning", "⌛"),
+      running: this.theme.fg("warning", "◐"),
+      done: this.theme.fg("success", "●"),
+      failed: this.theme.fg("error", "⊘"),
+      "timed-out": this.theme.fg("warning", "◌"),
     }[status];
   }
 

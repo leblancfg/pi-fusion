@@ -250,7 +250,7 @@ describe("conversation collection", () => {
 
 describe("truncateUtf8", () => {
   it("does not split multi-byte characters above the requested byte budget", () => {
-    const output = truncateUtf8("😀".repeat(100), 17);
+    const output = truncateUtf8("界".repeat(100), 17);
 
     assert.match(output, /pi-fusion truncated/);
     assert.doesNotThrow(() => Buffer.from(output, "utf8").toString("utf8"));
