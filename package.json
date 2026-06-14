@@ -1,22 +1,21 @@
 {
   "name": "pi-fusion",
   "version": "0.1.0",
-  "description": "Compound AI planning fanout for pi: parallel read-only model calls, then one actor response.",
+  "description": "Parallel agentic planning and test-time compute scaling for pi coding agents.",
   "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension",
     "compound-ai",
-    "compound-ai-systems",
-    "compound-inference",
     "test-time-compute",
     "inference-time-scaling",
+    "mixture-of-agents",
+    "parallel-planners",
+    "agentic-workflows",
     "multi-agent-planning",
-    "model-panels",
     "coding-agent",
     "developer-tools",
-    "parallel-agents",
-    "agent-planning"
+    "parallel-agents"
   ],
   "license": "MIT",
   "packageManager": "pnpm@10.22.0",
