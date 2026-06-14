@@ -13,8 +13,10 @@ import {
   shouldBypassFusion,
   type FusionFlags,
   type FusionSettings,
+  type PersistedFusionSettings,
   type WorkerResult,
 } from "./fusion.ts";
+import { showFusionPane } from "./ui.ts";
 
 interface JsonMessage {
   role?: string;
@@ -183,14 +185,14 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
   }
 }
 
-function readPersistedSettings(ctx: ExtensionContext): Partial<FusionSettings> | undefined {
+function readPersistedSettings(ctx: ExtensionContext): PersistedFusionSettings | undefined {
   const entries = ctx.sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>;
   const latest = entries.filter((entry) => entry.type === "custom" && entry.customType === "pi-fusion-settings").pop();
   if (!latest || !latest.data || typeof latest.data !== "object") return undefined;
-  return latest.data as Partial<FusionSettings>;
+  return latest.data as PersistedFusionSettings;
 }
 
-function settingsFromFlags(pi: ExtensionAPI, persisted?: Partial<FusionSettings>): FusionSettings {
+function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings): FusionSettings {
   const flags: FusionFlags = {
     "fusion-disabled": pi.getFlag("fusion-disabled"),
     "fusion-workers": pi.getFlag("fusion-workers"),
@@ -198,6 +200,8 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: Partial<FusionSettings>
     "fusion-context-bytes": pi.getFlag("fusion-context-bytes"),
     "fusion-timeout-ms": pi.getFlag("fusion-timeout-ms"),
     "fusion-model": pi.getFlag("fusion-model"),
+    "fusion-worker-model": pi.getFlag("fusion-worker-model"),
+    "fusion-synthesizer-model": pi.getFlag("fusion-synthesizer-model"),
   };
   return resolveSettings(flags, persisted);
 }
@@ -209,8 +213,15 @@ function settingsSummary(settings: FusionSettings): string {
     `workerOutputBytes=${settings.workerOutputBytes}`,
     `contextBytes=${settings.contextBytes}`,
     `timeoutMs=${settings.timeoutMs}`,
-    `model=${settings.model ?? "current"}`,
+    `workerModel=${settings.workerModel ?? "current"}`,
+    `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
   ].join(" ");
+}
+
+function findModelBySpec(ctx: ExtensionContext, spec: string): ReturnType<ExtensionContext["modelRegistry"]["getAll"]>[number] | undefined {
+  const slash = spec.indexOf("/");
+  if (slash <= 0 || slash === spec.length - 1) return undefined;
+  return ctx.modelRegistry.find(spec.slice(0, slash), spec.slice(slash + 1));
 }
 
 export default function piFusion(pi: ExtensionAPI): void {
@@ -242,7 +253,17 @@ export default function piFusion(pi: ExtensionAPI): void {
     default: String(DEFAULT_SETTINGS.timeoutMs),
   });
   pi.registerFlag("fusion-model", {
+    description: "Alias for --fusion-worker-model",
+    type: "string",
+    default: "current",
+  });
+  pi.registerFlag("fusion-worker-model", {
     description: "Model for fusion workers, or current/default",
+    type: "string",
+    default: "current",
+  });
+  pi.registerFlag("fusion-synthesizer-model", {
+    description: "Model for the synthesizer/actor turn, or current/default",
     type: "string",
     default: "current",
   });
@@ -263,10 +284,22 @@ export default function piFusion(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand("fusion", {
-    description: "Configure LLM Fusion (on/off/status/workers N/model SPEC/output N/context N/timeout N)",
+    description: "Open/configure LLM Fusion (UI, models, workers)",
     handler: async (args, ctx) => {
-      const [command, value] = args.trim().split(/\s+/, 2);
-      if (!command || command === "status") {
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      const command = parts[0];
+      const value = parts.slice(1).join(" ");
+
+      if (!command || command === "ui") {
+        const updated = await showFusionPane(ctx, settings);
+        if (!updated) return;
+        settings = updated;
+        persist();
+        ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
+        return;
+      }
+
+      if (command === "status") {
         ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
         return;
       }
@@ -277,10 +310,12 @@ export default function piFusion(pi: ExtensionAPI): void {
       else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
-      else if (command === "model") settings.model = value && value !== "current" && value !== "default" ? value : undefined;
-      else {
+      else if (command === "model" || command === "worker-model") settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
+      else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
+        settings.synthesizerModel = resolveSettings({ "fusion-synthesizer-model": value }, settings).synthesizerModel;
+      } else {
         ctx.ui.notify(
-          "Usage: /fusion [status|on|off|workers N|model SPEC|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|workers N|worker-model SPEC|synthesizer-model SPEC|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -307,7 +342,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     if (bypassReason) return { action: "continue" as const };
 
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
-    const model = settings.model ?? currentModelSpec(ctx);
+    const model = settings.workerModel ?? currentModelSpec(ctx);
     const thinkingLevel = pi.getThinkingLevel();
     const statusLines = Array.from({ length: settings.workerCount }, (_, index) => {
       const lens = getWorkerLens(index);
@@ -341,6 +376,15 @@ export default function piFusion(pi: ExtensionAPI): void {
       });
 
       const workerResults = await Promise.all(workerPromises);
+      if (settings.synthesizerModel) {
+        const synthesizerModel = findModelBySpec(ctx, settings.synthesizerModel);
+        if (!synthesizerModel) {
+          ctx.ui.notify(`pi-fusion: synthesizer model not found: ${settings.synthesizerModel}`, "warning");
+        } else if (!(await pi.setModel(synthesizerModel))) {
+          ctx.ui.notify(`pi-fusion: no API key for synthesizer model: ${settings.synthesizerModel}`, "warning");
+        }
+      }
+
       const actorPrompt = buildActorPrompt({
         originalText: event.text,
         workerResults,

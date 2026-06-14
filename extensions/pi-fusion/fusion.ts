@@ -6,7 +6,12 @@ export interface FusionSettings {
   workerOutputBytes: number;
   contextBytes: number;
   timeoutMs: number;
-  model: string | undefined;
+  workerModel: string | undefined;
+  synthesizerModel: string | undefined;
+}
+
+export interface PersistedFusionSettings extends Partial<FusionSettings> {
+  model?: string;
 }
 
 export interface FusionFlags {
@@ -16,6 +21,8 @@ export interface FusionFlags {
   "fusion-context-bytes"?: boolean | string;
   "fusion-timeout-ms"?: boolean | string;
   "fusion-model"?: boolean | string;
+  "fusion-worker-model"?: boolean | string;
+  "fusion-synthesizer-model"?: boolean | string;
 }
 
 export interface WorkerLens {
@@ -56,7 +63,8 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   workerOutputBytes: 12_000,
   contextBytes: 16_000,
   timeoutMs: 600_000,
-  model: undefined,
+  workerModel: undefined,
+  synthesizerModel: undefined,
 };
 
 export const WORKER_LENSES: WorkerLens[] = [
@@ -93,8 +101,18 @@ export function parsePositiveInteger(
   return Math.max(options.min, Math.min(options.max, parsed));
 }
 
-export function resolveSettings(flags: FusionFlags = {}, persisted?: Partial<FusionSettings>): FusionSettings {
-  const settings = { ...DEFAULT_SETTINGS, ...persisted };
+function normalizeModelSpec(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
+  return trimmed;
+}
+
+export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
+  const persistedWithoutLegacy = persisted ? { ...persisted } : undefined;
+  delete persistedWithoutLegacy?.model;
+
+  const settings = { ...DEFAULT_SETTINGS, ...persistedWithoutLegacy };
+  settings.workerModel = settings.workerModel ?? normalizeModelSpec(persisted?.model);
   settings.enabled = persisted?.enabled ?? flags["fusion-disabled"] !== true;
   settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
   settings.workerOutputBytes = parsePositiveInteger(flags["fusion-output-bytes"], settings.workerOutputBytes, {
@@ -110,9 +128,12 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: Partial<Fus
     max: 3_600_000,
   });
 
-  const flagModel = flags["fusion-model"];
-  if (typeof flagModel === "string" && flagModel.trim()) settings.model = flagModel.trim();
-  if (settings.model === "current" || settings.model === "default" || settings.model === "") settings.model = undefined;
+  const workerModelFlag = flags["fusion-worker-model"] ?? flags["fusion-model"];
+  const synthesizerModelFlag = flags["fusion-synthesizer-model"];
+  if (typeof workerModelFlag === "string") settings.workerModel = normalizeModelSpec(workerModelFlag);
+  if (typeof synthesizerModelFlag === "string") settings.synthesizerModel = normalizeModelSpec(synthesizerModelFlag);
+  settings.workerModel = normalizeModelSpec(settings.workerModel);
+  settings.synthesizerModel = normalizeModelSpec(settings.synthesizerModel);
 
   return settings;
 }

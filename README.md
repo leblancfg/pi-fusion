@@ -33,7 +33,7 @@ For each idle, non-command user input, the extension:
   - bounded worker outputs;
   - instructions to synthesize, verify, and act normally.
 
-The actor is the regular pi agent in the main session, with whatever tools/model/settings you already selected.
+The actor is the regular pi agent in the main session, with whatever tools/settings you already selected. By default it keeps your current model, but pi-fusion can optionally switch to a configured synthesizer model before the actor turn starts.
 
 ## Worker lenses
 
@@ -46,19 +46,47 @@ The first stab uses a small set of planning lenses to diversify useful thinking:
 
 If you configure more than four workers, lenses repeat.
 
+## UI
+
+Run `/fusion` with no arguments to open a floating settings pane.
+
+From the pane you can tweak:
+
+- whether fusion is enabled;
+- the number of worker planners;
+- the worker model;
+- the synthesizer/actor model.
+
+Keyboard controls:
+
+```text
+↑/↓       move
+←/→       adjust worker count or cycle models
+Enter     pick a model or save
+Space     toggle enabled
+Esc       cancel
+```
+
+Model rows also open a floating searchable picker with `Enter`.
+
 ## Commands
 
 ```text
+/fusion                 # open floating pane
 /fusion status
 /fusion on
 /fusion off
 /fusion workers 4
-/fusion model anthropic/claude-sonnet-4-5
-/fusion model current
+/fusion worker-model anthropic/claude-sonnet-4-5
+/fusion worker-model current
+/fusion synthesizer-model openai/gpt-5.2-codex
+/fusion synthesizer-model current
 /fusion output 12000
 /fusion context 16000
 /fusion timeout 600000
 ```
+
+`/fusion model ...` is kept as an alias for `/fusion worker-model ...`.
 
 Settings changed through `/fusion` are persisted in the pi session via a custom entry.
 
@@ -67,13 +95,14 @@ Settings changed through `/fusion` are persisted in the pi session via a custom 
 ```bash
 pi --fusion-disabled
 pi --fusion-workers 3
-pi --fusion-model anthropic/claude-sonnet-4-5
+pi --fusion-worker-model anthropic/claude-sonnet-4-5
+pi --fusion-synthesizer-model openai/gpt-5.2-codex
 pi --fusion-output-bytes 12000
 pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-`--fusion-model current` or omitting the flag makes workers use the current main-session model when possible.
+`current` or omitting a model flag means "use/keep the current main-session model". `--fusion-model` is kept as a backwards-compatible alias for `--fusion-worker-model`.
 
 ## Bypasses
 

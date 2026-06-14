@@ -34,14 +34,22 @@ describe("settings", () => {
       "fusion-output-bytes": "10",
       "fusion-context-bytes": "-1",
       "fusion-timeout-ms": "abc",
-      "fusion-model": "openai/gpt-5",
+      "fusion-worker-model": "openai/gpt-5",
+      "fusion-synthesizer-model": "anthropic/claude-opus-4-5",
     });
 
     assert.equal(settings.workerCount, 8);
     assert.equal(settings.workerOutputBytes, 1_000);
     assert.equal(settings.contextBytes, 0);
     assert.equal(settings.timeoutMs, 600_000);
-    assert.equal(settings.model, "openai/gpt-5");
+    assert.equal(settings.workerModel, "openai/gpt-5");
+    assert.equal(settings.synthesizerModel, "anthropic/claude-opus-4-5");
+  });
+
+  it("keeps --fusion-model as a worker model alias and migrates legacy persisted model", () => {
+    assert.equal(resolveSettings({ "fusion-model": "openai/gpt-5" }).workerModel, "openai/gpt-5");
+    assert.equal(resolveSettings({}, { model: "anthropic/claude-sonnet-4-5" }).workerModel, "anthropic/claude-sonnet-4-5");
+    assert.equal(resolveSettings({ "fusion-worker-model": "current", "fusion-synthesizer-model": "default" }).workerModel, undefined);
   });
 
   it("lets persisted enabled override the startup disable flag", () => {
