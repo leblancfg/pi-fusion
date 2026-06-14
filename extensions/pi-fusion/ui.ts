@@ -112,11 +112,11 @@ class FusionPane {
     }
 
     if (matchesKey(data, "up")) {
-      this.selected = Math.max(0, this.selected - 1);
+      this.selected = (this.selected - 1 + this.rows.length) % this.rows.length;
       return;
     }
     if (matchesKey(data, "down")) {
-      this.selected = Math.min(this.rows.length - 1, this.selected + 1);
+      this.selected = (this.selected + 1) % this.rows.length;
       return;
     }
 
@@ -219,11 +219,11 @@ class FusionWorkersPane {
       return;
     }
     if (matchesKey(data, "up")) {
-      this.selected = Math.max(0, this.selected - 1);
+      this.selected = (this.selected - 1 + this.rowCount) % this.rowCount;
       return;
     }
     if (matchesKey(data, "down")) {
-      this.selected = Math.min(this.rowCount - 1, this.selected + 1);
+      this.selected = (this.selected + 1) % this.rowCount;
       return;
     }
     if (matchesKey(data, "left")) {
