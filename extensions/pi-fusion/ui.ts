@@ -1,6 +1,16 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  Container,
+  fuzzyFilter,
+  matchesKey,
+  type SelectItem,
+  SelectList,
+  Text,
+  truncateToWidth,
+  type TUI,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 import { normalizeWorkerSlots, THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice, type FusionThinkingLevel } from "./fusion.ts";
 
 interface FusionPaneResult {
@@ -293,32 +303,65 @@ class FusionWorkersPane {
 }
 
 async function pickModel(ctx: ExtensionContext, title: string, currentSpec: string | undefined, choices: ModelChoice[]): Promise<string | null> {
-  const items: SelectItem[] = choices.map((choice) => ({
-    value: choice.spec,
-    label: choice.spec === normalizeModelChoice(currentSpec) ? `${choice.label} (selected)` : choice.label,
-    description: choice.description,
-  }));
+  const selectedSpec = normalizeModelChoice(currentSpec);
 
   return ctx.ui.custom<string | null>(
     (tui, theme, _keybindings, done) => {
-      const container = new Container();
-      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-      container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+      let query = "";
 
-      const selectList = new SelectList(items, Math.min(items.length, 16), {
-        selectedPrefix: (text) => theme.fg("accent", text),
-        selectedText: (text) => theme.fg("accent", text),
-        description: (text) => theme.fg("muted", text),
-        scrollInfo: (text) => theme.fg("dim", text),
-        noMatch: (text) => theme.fg("warning", text),
-      });
-      const selectedIndex = items.findIndex((item) => item.value === normalizeModelChoice(currentSpec));
-      if (selectedIndex >= 0) selectList.setSelectedIndex(selectedIndex);
-      selectList.onSelect = (item) => done(item.value);
-      selectList.onCancel = () => done(null);
-      container.addChild(selectList);
-      container.addChild(new Text(theme.fg("dim", "type to filter • ↑↓ navigate • enter select • esc back"), 1, 0));
-      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+      const themeCallbacks = {
+        selectedPrefix: (text: string) => theme.fg("accent", text),
+        selectedText: (text: string) => theme.fg("accent", text),
+        description: (text: string) => theme.fg("muted", text),
+        scrollInfo: (text: string) => theme.fg("dim", text),
+        noMatch: (text: string) => theme.fg("warning", text),
+      };
+
+      const toItems = (filtered: ModelChoice[]): SelectItem[] =>
+        filtered.map((choice) => ({
+          value: choice.spec,
+          label: choice.spec === selectedSpec ? `${choice.label} (selected)` : choice.label,
+          description: choice.description,
+        }));
+
+      const makeList = (): SelectList => {
+        const filtered = query.trim() ? fuzzyFilter(choices, query, (choice) => `${choice.spec} ${choice.label} ${choice.description}`) : choices;
+        const items = toItems(filtered);
+        const list = new SelectList(items, Math.max(1, Math.min(items.length, 14)), themeCallbacks);
+        list.onSelect = (item) => done(item.value);
+        list.onCancel = () => done(null);
+        return list;
+      };
+
+      let list = makeList();
+      const initialIndex = choices.findIndex((choice) => choice.spec === selectedSpec);
+      if (initialIndex >= 0) list.setSelectedIndex(initialIndex);
+
+      const container = new Container();
+      const searchText = new Text("", 1, 0);
+      const accentBorder = () => new DynamicBorder((text: string) => theme.fg("accent", text));
+      const renderSearch = () => {
+        const shown = query.length > 0 ? theme.fg("text", query) : theme.fg("dim", "(type to filter)");
+        searchText.setText(`${theme.fg("accent", "›")} ${shown}${theme.fg("accent", "▌")}`);
+      };
+      const rebuild = () => {
+        container.clear();
+        container.addChild(accentBorder());
+        container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+        container.addChild(searchText);
+        container.addChild(list);
+        container.addChild(new Text(theme.fg("dim", "type to fuzzy-filter • ↑↓ navigate • enter select • esc back"), 1, 0));
+        container.addChild(accentBorder());
+      };
+      renderSearch();
+      rebuild();
+
+      const refilter = () => {
+        list = makeList();
+        renderSearch();
+        rebuild();
+        tui.requestRender();
+      };
 
       return {
         render(width: number) {
@@ -328,8 +371,29 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
           container.invalidate();
         },
         handleInput(data: string) {
-          selectList.handleInput(data);
-          tui.requestRender();
+          if (
+            matchesKey(data, "up") ||
+            matchesKey(data, "down") ||
+            matchesKey(data, "return") ||
+            matchesKey(data, "enter") ||
+            matchesKey(data, "escape") ||
+            matchesKey(data, "ctrl+c")
+          ) {
+            list.handleInput(data);
+            tui.requestRender();
+            return;
+          }
+          if (matchesKey(data, "backspace")) {
+            if (query.length > 0) {
+              query = query.slice(0, -1);
+              refilter();
+            }
+            return;
+          }
+          if (data.length === 1 && data >= " ") {
+            query += data;
+            refilter();
+          }
         },
       };
     },
