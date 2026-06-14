@@ -16,7 +16,7 @@ import {
   type PersistedFusionSettings,
   type WorkerResult,
 } from "./fusion.ts";
-import { showFusionPane } from "./ui.ts";
+import { showFusionPane, startFusionLivePanel, type FusionLiveWorkerState } from "./ui.ts";
 
 interface JsonMessage {
   role?: string;
@@ -41,6 +41,7 @@ interface RunWorkerInput {
   timeoutMs: number;
   model: string | undefined;
   thinkingLevel: string | undefined;
+  onLiveUpdate?: (index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>) => void;
 }
 
 function getPiInvocation(args: string[]): { command: string; args: string[] } {
@@ -95,6 +96,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
     lens: input.lens,
     ok: false,
     output: "",
+    reasoning: "",
     stderr: "",
     exitCode: null,
     timedOut: false,
@@ -118,6 +120,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
 
       let stdoutBuffer = "";
       let timeout: NodeJS.Timeout | undefined;
+      const liveEvents: string[] = [];
 
       const processLine = (line: string) => {
         if (!line.trim()) return;
@@ -128,12 +131,33 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
           return;
         }
 
+        if (event.type === "message_update" && event.assistantMessageEvent) {
+          const update = event.assistantMessageEvent as { type?: string; delta?: string };
+          if (update.type === "text_delta" && update.delta) {
+            result.output += update.delta;
+            input.onLiveUpdate?.(input.index, { output: result.output });
+          } else if (update.type === "thinking_delta" && update.delta) {
+            result.reasoning += update.delta;
+            input.onLiveUpdate?.(input.index, { reasoning: result.reasoning });
+          }
+          return;
+        }
+
+        if (event.type === "tool_execution_start" && event.toolName) {
+          liveEvents.push(`${event.toolName}`);
+          input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
+          return;
+        }
+
         if (event.type !== "message_end" || !event.message) return;
         const message = event.message as JsonMessage;
         if (message.role !== "assistant") return;
 
         const text = textFromContent(message.content).trim();
-        if (text) result.output = text;
+        if (text) {
+          result.output = text;
+          input.onLiveUpdate?.(input.index, { output: result.output });
+        }
         result.usage.turns += 1;
         result.usage.input += message.usage?.input ?? 0;
         result.usage.output += message.usage?.output ?? 0;
@@ -143,6 +167,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         result.model = result.model ?? message.model;
         if (message.stopReason === "error" || message.stopReason === "aborted") {
           result.output = message.errorMessage || result.output;
+          input.onLiveUpdate?.(input.index, { output: result.output });
         }
       };
 
@@ -170,6 +195,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
 
       timeout = setTimeout(() => {
         result.timedOut = true;
+        input.onLiveUpdate?.(input.index, { status: "timed-out" });
         proc.kill("SIGTERM");
         setTimeout(() => proc.kill("SIGKILL"), 5_000).unref();
       }, input.timeoutMs);
@@ -179,6 +205,11 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
     result.exitCode = exitCode;
     result.ok = exitCode === 0 && !result.timedOut && result.output.trim().length > 0;
     if (!result.output.trim()) result.output = result.stderr.trim() || "(worker produced no final assistant output)";
+    input.onLiveUpdate?.(input.index, {
+      status: result.ok ? "done" : result.timedOut ? "timed-out" : "failed",
+      output: result.output,
+      reasoning: result.reasoning,
+    });
     return result;
   } finally {
     await cleanupPromptFile(tmp);
@@ -366,6 +397,11 @@ export default function piFusion(pi: ExtensionAPI): void {
       const lens = getWorkerLens(index);
       return `⏳ worker ${index + 1}: ${lens.name}`;
     });
+    const liveStates: FusionLiveWorkerState[] = Array.from({ length: settings.workerCount }, (_, index) => {
+      const lens = getWorkerLens(index);
+      return { index, lens: lens.name, status: "queued", output: "", reasoning: "", events: [] };
+    });
+    const livePanel = startFusionLivePanel(ctx, liveStates);
     setFusionStatus(ctx, statusLines);
 
     try {
@@ -379,6 +415,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           workerCount: settings.workerCount,
           lens,
         });
+        livePanel?.update(index, { status: "running" });
         const result = await runWorker({
           prompt,
           cwd: ctx.cwd,
@@ -387,6 +424,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           timeoutMs: settings.timeoutMs,
           model,
           thinkingLevel,
+          onLiveUpdate: (workerIndex, patch) => livePanel?.update(workerIndex, patch),
         });
         statusLines[index] = `${result.ok ? "✓" : "✗"} worker ${index + 1}: ${lens.name}`;
         setFusionStatus(ctx, statusLines);
@@ -419,6 +457,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
       return { action: "continue" as const };
     } finally {
+      livePanel?.close();
       setFusionStatus(ctx, undefined);
     }
   });

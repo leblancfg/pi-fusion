@@ -18,6 +18,7 @@ function worker(overrides: Partial<WorkerResult> = {}): WorkerResult {
     lens: "mapper",
     ok: true,
     output: "worker output",
+    reasoning: "worker reasoning",
     stderr: "",
     exitCode: 0,
     timedOut: false,

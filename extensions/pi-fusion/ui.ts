@@ -1,6 +1,6 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice } from "./fusion.ts";
 
 interface FusionPaneResult {
@@ -296,4 +296,197 @@ export async function showFusionPane(ctx: ExtensionContext, initialSettings: Fus
     const selected = await pickModel(ctx, title, draft[field], choices);
     if (selected !== null) setModelChoice(draft, field, selected);
   }
+}
+
+export interface FusionLiveWorkerState {
+  index: number;
+  lens: string;
+  status: "queued" | "running" | "done" | "failed" | "timed-out";
+  output: string;
+  reasoning: string;
+  events: string[];
+}
+
+export interface FusionLivePanelController {
+  update(index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>): void;
+  close(): void;
+}
+
+function tailText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `…${text.slice(text.length - maxChars)}`;
+}
+
+function wrapPlainText(text: string, width: number, maxLines: number): string[] {
+  if (maxLines <= 0) return [];
+  const normalized = text.trimEnd();
+  if (!normalized) return [];
+  const safeWidth = Math.max(1, width);
+  if (safeWidth < 4) {
+    const narrowLines = normalized.split("\n").map((line) => truncateToWidth(line, safeWidth, "", true));
+    return narrowLines.length <= maxLines ? narrowLines : [truncateToWidth("…", safeWidth, "", true), ...narrowLines.slice(narrowLines.length - maxLines + 1)];
+  }
+  const lines: string[] = [];
+
+  for (const rawLine of normalized.split("\n")) {
+    let remaining = rawLine;
+    if (!remaining) {
+      lines.push("");
+      continue;
+    }
+
+    while (visibleWidth(remaining) > safeWidth) {
+      let sliceLength = Math.min(remaining.length, safeWidth);
+      while (sliceLength > 1 && visibleWidth(remaining.slice(0, sliceLength)) > safeWidth) sliceLength--;
+      lines.push(remaining.slice(0, sliceLength));
+      remaining = remaining.slice(sliceLength);
+    }
+    lines.push(remaining);
+  }
+
+  if (lines.length <= maxLines) return lines;
+  return ["…", ...lines.slice(lines.length - maxLines + 1)];
+}
+
+function splitWidths(total: number, count: number): number[] {
+  const base = Math.max(1, Math.floor(total / count));
+  const widths = Array.from({ length: count }, () => base);
+  let remainder = total - base * count;
+  for (let i = 0; i < widths.length && remainder > 0; i++, remainder--) widths[i]++;
+  return widths;
+}
+
+class FusionLivePanel {
+  private closed = false;
+
+  constructor(
+    private readonly tui: TUI,
+    private readonly theme: Theme,
+    private readonly workers: FusionLiveWorkerState[],
+    private readonly done: () => void,
+  ) {}
+
+  update(index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>): void {
+    const worker = this.workers[index];
+    if (!worker || this.closed) return;
+    Object.assign(worker, patch);
+    worker.output = tailText(worker.output, 16_000);
+    worker.reasoning = tailText(worker.reasoning, 16_000);
+    worker.events = worker.events.slice(-20);
+    this.tui.requestRender();
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.done();
+  }
+
+  handleInput(data: string): void {
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) this.close();
+  }
+
+  render(width: number): string[] {
+    const panelWidth = Math.max(20, Math.min(width, 160));
+    const count = Math.max(1, this.workers.length);
+    const contentWidth = Math.max(count, panelWidth - count - 1);
+    const colWidths = splitWidths(contentWidth, count);
+    const border = (text: string) => this.theme.fg("border", text);
+    const separator = border("│");
+
+    const borderLine = (left: string, middle: string, right: string, fill: string) =>
+      border(left) + colWidths.map((colWidth) => border(fill.repeat(colWidth))).join(border(middle)) + border(right);
+
+    const row = (cells: string[]) =>
+      separator +
+      cells
+        .map((cell, index) => {
+          const width = colWidths[index] ?? 1;
+          return padToWidth(truncateToWidth(cell, width, "…", true), width);
+        })
+        .join(separator) +
+      separator;
+
+    const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
+    const headerText = this.theme.fg("accent", this.theme.bold(` LLM Fusion planners ${doneCount}/${this.workers.length} `));
+    const headerLine = truncateToWidth(headerText, Math.max(1, panelWidth - 2), "…", true);
+    const headerPadding = Math.max(0, panelWidth - 2 - visibleWidth(headerLine));
+
+    const workerLines = this.workers.map((worker, index) => this.renderWorker(worker, colWidths[index] ?? 1));
+    const maxWorkerLines = Math.max(...workerLines.map((lines) => lines.length));
+    const lines = [
+      border(`╭${"─".repeat(panelWidth - 2)}╮`),
+      border("│") + headerLine + " ".repeat(headerPadding) + border("│"),
+      borderLine("├", "┬", "┤", "─"),
+    ];
+
+    for (let lineIndex = 0; lineIndex < maxWorkerLines; lineIndex++) {
+      lines.push(row(workerLines.map((worker) => worker[lineIndex] ?? "")));
+    }
+
+    lines.push(borderLine("╰", "┴", "╯", "─"));
+    return lines;
+  }
+
+  invalidate(): void {}
+  dispose(): void {
+    this.closed = true;
+  }
+
+  private renderWorker(worker: FusionLiveWorkerState, width: number): string[] {
+    const statusIcon = {
+      queued: this.theme.fg("dim", "○"),
+      running: this.theme.fg("warning", "⏳"),
+      done: this.theme.fg("success", "✓"),
+      failed: this.theme.fg("error", "✗"),
+      "timed-out": this.theme.fg("warning", "⌛"),
+    }[worker.status];
+
+    const reasoningLines = wrapPlainText(
+      worker.reasoning || (worker.status === "running" ? "(no reasoning stream yet; model/provider may hide it)" : "(no reasoning stream)"),
+      width,
+      6,
+    );
+    const eventText = worker.events.length > 0 ? `\n${worker.events.map((event) => `→ ${event}`).join("\n")}` : "";
+    const outputLines = wrapPlainText(worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"), width, 10);
+
+    return [
+      `${statusIcon} ${this.theme.fg("accent", `worker ${worker.index + 1}`)} ${this.theme.fg("muted", worker.lens)}`,
+      this.theme.fg("dim", "reasoning"),
+      ...reasoningLines,
+      "",
+      this.theme.fg("dim", "output"),
+      ...outputLines,
+    ];
+  }
+}
+
+export function startFusionLivePanel(ctx: ExtensionContext, workers: FusionLiveWorkerState[]): FusionLivePanelController | undefined {
+  if (ctx.mode !== "tui") return undefined;
+
+  let panel: FusionLivePanel | undefined;
+  let close: (() => void) | undefined;
+
+  void ctx.ui
+    .custom<void>(
+      (tui, theme, _keybindings, done) => {
+        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), done);
+        close = () => panel?.close();
+        return panel;
+      },
+      {
+        overlay: true,
+        overlayOptions: { anchor: "center", width: "95%", maxHeight: "85%", margin: 1 },
+      },
+    )
+    .catch(() => undefined);
+
+  return {
+    update(index, patch) {
+      panel?.update(index, patch);
+    },
+    close() {
+      close?.();
+    },
+  };
 }

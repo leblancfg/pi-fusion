@@ -44,6 +44,7 @@ export interface WorkerResult {
   lens: string;
   ok: boolean;
   output: string;
+  reasoning: string;
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;

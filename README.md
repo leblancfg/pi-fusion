@@ -23,7 +23,9 @@ pi -e ./extensions/pi-fusion/index.ts
 
 For each idle, non-command user input, the extension:
 
+- opens a live floating split pane in TUI mode, with one vertical column per worker;
 - spawns `N` standalone `pi` subprocesses in JSON print mode;
+- streams each worker's reasoning deltas, tool events, and output into its column as JSON events arrive;
 - disables extensions in those subprocesses with `--no-extensions` to avoid recursive fusion;
 - restricts worker tools to `read,grep,find,ls`;
 - gives each worker the current task plus a capped slice of recent conversation context;
@@ -70,6 +72,17 @@ Esc       cancel
 ```
 
 Model rows also open a floating searchable picker with `Enter`.
+
+## Live planner splits
+
+In TUI mode, each fused turn shows a floating live panel while workers are running. It behaves like vertical splits:
+
+- each worker gets its own column;
+- reasoning streams into the `reasoning` section when the selected provider/model exposes thinking deltas;
+- assistant text streams into the `output` section;
+- read/search tool calls show as lightweight `→ tool` events.
+
+Press `Esc` while the panel is focused to hide it without cancelling the workers. The pane closes automatically when the planning pass finishes and the actor turn starts.
 
 ## Commands
 
@@ -142,6 +155,8 @@ Full worker transcripts are not stored separately yet. The main session only see
 - Planner workers do not see attached images. The actor prompt warns the actor when images are present.
 - Worker subprocesses still load normal pi context files (`AGENTS.md`) but not extensions.
 - Worker planning blocks the input turn until all workers finish or time out.
+- The live split pane only appears in TUI mode; print/JSON/RPC still run fusion without that UI.
+- Some providers/models hide chain-of-thought, so a worker column may show no reasoning stream even when reasoning effort is enabled.
 - Worker tool access is intentionally very narrow: no `bash`, no write/edit.
 - Print/JSON/RPC modes should work in principle, but the extension is mostly designed for interactive testing.
 
