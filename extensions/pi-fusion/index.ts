@@ -425,19 +425,24 @@ export default function piFusion(pi: ExtensionAPI): void {
       else if (command === "workers") {
         settings.workerCount = resolveSettings({ "fusion-workers": value }, settings).workerCount;
         settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
-      }
-      else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
+      } else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
       else if (command === "discovery-model") settings.discoveryModel = resolveSettings({ "fusion-discovery-model": value }, settings).discoveryModel;
       else if (command === "discovery-thinking" || command === "discovery-reasoning") {
         settings.discoveryThinking = resolveSettings({ "fusion-discovery-thinking": value }, settings).discoveryThinking;
-      } else if (command === "model" || command === "worker-model") settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
+      } else if (command === "model" || command === "worker-model")
+        settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
       else if (command === "worker-thinking" || command === "worker-reasoning") {
         settings.workerThinking = resolveSettings({ "fusion-worker-thinking": value }, settings).workerThinking;
       } else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
         settings.synthesizerModel = resolveSettings({ "fusion-synthesizer-model": value }, settings).synthesizerModel;
-      } else if (command === "synthesizer-thinking" || command === "synth-thinking" || command === "synthesizer-reasoning" || command === "synth-reasoning") {
+      } else if (
+        command === "synthesizer-thinking" ||
+        command === "synth-thinking" ||
+        command === "synthesizer-reasoning" ||
+        command === "synth-reasoning"
+      ) {
         settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
       } else {
         ctx.ui.notify(

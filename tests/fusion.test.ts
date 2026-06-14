@@ -72,7 +72,11 @@ describe("settings", () => {
     assert.equal(settings.workerThinking, undefined);
     assert.equal(settings.synthesizerThinking, undefined);
 
-    const invalid = resolveSettings({ "fusion-discovery-thinking": "maximum", "fusion-worker-thinking": "maximum", "fusion-synthesizer-thinking": "wat" });
+    const invalid = resolveSettings({
+      "fusion-discovery-thinking": "maximum",
+      "fusion-worker-thinking": "maximum",
+      "fusion-synthesizer-thinking": "wat",
+    });
     assert.equal(invalid.discoveryThinking, undefined);
     assert.equal(invalid.workerThinking, undefined);
     assert.equal(invalid.synthesizerThinking, undefined);
@@ -92,10 +96,7 @@ describe("settings", () => {
   });
 
   it("normalizes per-worker slots to match the worker count", () => {
-    const settings = resolveSettings(
-      { "fusion-workers": "3" },
-      { workers: [{ model: "openai/gpt-5", thinking: "high" }] },
-    );
+    const settings = resolveSettings({ "fusion-workers": "3" }, { workers: [{ model: "openai/gpt-5", thinking: "high" }] });
     assert.equal(settings.workers.length, 3);
     assert.deepEqual(settings.workers[0], { model: "openai/gpt-5", thinking: "high" });
     assert.deepEqual(settings.workers[1], { model: undefined, thinking: undefined });
@@ -107,7 +108,13 @@ describe("settings", () => {
   it("resolves per-worker model/thinking with global then current fallbacks", () => {
     const settings = resolveSettings(
       { "fusion-worker-model": "anthropic/claude-sonnet-4-5", "fusion-worker-thinking": "medium" },
-      { workerCount: 2, workers: [{ model: "openai/gpt-5", thinking: "high" }, { model: undefined, thinking: undefined }] },
+      {
+        workerCount: 2,
+        workers: [
+          { model: "openai/gpt-5", thinking: "high" },
+          { model: undefined, thinking: undefined },
+        ],
+      },
     );
     assert.equal(resolveWorkerModel(settings, 0, "current/model"), "openai/gpt-5");
     assert.equal(resolveWorkerModel(settings, 1, "current/model"), "anthropic/claude-sonnet-4-5");

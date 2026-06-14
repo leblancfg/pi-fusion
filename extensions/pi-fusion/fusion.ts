@@ -92,11 +92,7 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   synthesizerThinking: undefined,
 };
 
-export function parsePositiveInteger(
-  value: boolean | string | number | undefined,
-  fallback: number,
-  options: { min: number; max: number },
-): number {
+export function parsePositiveInteger(value: boolean | string | number | undefined, fallback: number, options: { min: number; max: number }): number {
   if (typeof value === "boolean" || value === undefined) return fallback;
   const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -112,9 +108,7 @@ function normalizeModelSpec(value: string | undefined): string | undefined {
 export function normalizeThinkingChoice(value: string | undefined): FusionThinkingLevel | undefined {
   const trimmed = value?.trim();
   if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
-  return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current"
-    ? (trimmed as FusionThinkingLevel)
-    : undefined;
+  return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current" ? (trimmed as FusionThinkingLevel) : undefined;
 }
 
 export function normalizeWorkerSlots(workers: FusionWorker[] | undefined, count: number): FusionWorker[] {
@@ -215,9 +209,7 @@ export function getWorkerLens(index: number): WorkerLens {
 }
 
 export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string }): string {
-  const contextSection = input.recentContext.trim()
-    ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
-    : "";
+  const contextSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
 
   return `You are the discovery agent in an LLM Fusion pipeline.
 
@@ -262,7 +254,10 @@ Return only a JSON array of ${input.workerCount} strings. No markdown, no explan
 
 export function parsePromptVariations(output: string, workerCount: number, fallbackTask: string): string[] {
   const count = Math.max(1, workerCount);
-  const trimmed = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  const trimmed = output
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
 
   const fill = (variations: string[]): string[] =>
     Array.from({ length: count }, (_, index) => variations[index] ?? variations[variations.length - 1] ?? fallbackTask);
@@ -292,12 +287,8 @@ export function buildWorkerPrompt(input: {
   cwd: string;
   lens: WorkerLens;
 }): string {
-  const discoverySection = input.discoveryContext.trim()
-    ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n`
-    : "";
-  const recentSection = input.recentContext.trim()
-    ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n`
-    : "";
+  const discoverySection = input.discoveryContext.trim() ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n` : "";
+  const recentSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
 
   return `${discoverySection}You are worker ${input.lens.name} in an LLM Fusion planning pass.
 
@@ -346,13 +337,13 @@ export function buildActorPrompt(input: {
   imageCount: number;
 }): string {
   const workers = input.workerResults.map((result) => formatWorkerForActor(result, input.workerOutputBytes)).join("\n\n---\n\n");
-  const imageNote = input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
-  const discovery = input.discoveryContext.trim()
-    ? `## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 64_000)}\n\n`
-    : "";
-  const variations = input.promptVariations.length > 0
-    ? `\n\n## Worker prompt variations\n\n${input.promptVariations.map((variation, index) => `${index + 1}. ${variation}`).join("\n")}`
-    : "";
+  const imageNote =
+    input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
+  const discovery = input.discoveryContext.trim() ? `## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 64_000)}\n\n` : "";
+  const variations =
+    input.promptVariations.length > 0
+      ? `\n\n## Worker prompt variations\n\n${input.promptVariations.map((variation, index) => `${index + 1}. ${variation}`).join("\n")}`
+      : "";
 
   return `${ACTOR_PROMPT_MARKER}
 ${discovery}# LLM Fusion planning bundle

@@ -1,13 +1,7 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, matchesKey, type SelectItem, SelectList, Text, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
-import {
-  normalizeWorkerSlots,
-  THINKING_CHOICES,
-  type FusionSettings,
-  type FusionThinkingChoice,
-  type FusionThinkingLevel,
-} from "./fusion.ts";
+import { normalizeWorkerSlots, THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice, type FusionThinkingLevel } from "./fusion.ts";
 
 interface FusionPaneResult {
   action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesizer-model" | "configure-workers";
@@ -153,8 +147,18 @@ class FusionPane {
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
       this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
-      this.renderSettingRow("discovery", "Discovery", formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking), "enter model • ←/→ effort"),
-      this.renderSettingRow("synthesizer", "Synthesizer", formatModelReasoning(this.settings.synthesizerModel, this.settings.synthesizerThinking), "enter model • ←/→ effort"),
+      this.renderSettingRow(
+        "discovery",
+        "Discovery",
+        formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking),
+        "enter model • ←/→ effort",
+      ),
+      this.renderSettingRow(
+        "synthesizer",
+        "Synthesizer",
+        formatModelReasoning(this.settings.synthesizerModel, this.settings.synthesizerThinking),
+        "enter model • ←/→ effort",
+      ),
       this.renderSettingRow("save", "Save and close", th.fg("accent", "enter"), "esc cancel"),
     ];
 
@@ -462,7 +466,9 @@ function wrapPlainText(text: string, width: number, maxLines: number): string[] 
   const safeWidth = Math.max(1, width);
   if (safeWidth < 4) {
     const narrowLines = normalized.split("\n").map((line) => truncateToWidth(line, safeWidth, "", true));
-    return narrowLines.length <= maxLines ? narrowLines : [truncateToWidth("…", safeWidth, "", true), ...narrowLines.slice(narrowLines.length - maxLines + 1)];
+    return narrowLines.length <= maxLines
+      ? narrowLines
+      : [truncateToWidth("…", safeWidth, "", true), ...narrowLines.slice(narrowLines.length - maxLines + 1)];
   }
   const lines: string[] = [];
 
@@ -664,8 +670,7 @@ class FusionLivePanel {
     const timing = formatWorkerTiming(worker);
     const head = `${this.statusIcon(worker.status)} ${this.theme.fg("accent", worker.label)} ${this.theme.fg("muted", worker.lens)}${timing ? this.theme.fg("dim", ` ${timing}`) : ""}`;
 
-    const promptBlock =
-      opts.showPrompt && worker.prompt ? [this.theme.fg("dim", "prompt"), ...wrapPlainText(worker.prompt, width, 4), ""] : [];
+    const promptBlock = opts.showPrompt && worker.prompt ? [this.theme.fg("dim", "prompt"), ...wrapPlainText(worker.prompt, width, 4), ""] : [];
     const reasoningLines = wrapPlainText(
       worker.reasoning || (worker.status === "running" ? "(no reasoning stream yet; model/provider may hide it)" : "(no reasoning stream)"),
       width,
@@ -696,7 +701,14 @@ export function startFusionLivePanel(
   void ctx.ui
     .custom<void>(
       (tui, theme, _keybindings, done) => {
-        panel = new FusionLivePanel(tui, theme, workers.map((worker) => ({ ...worker })), title, done, onCancel);
+        panel = new FusionLivePanel(
+          tui,
+          theme,
+          workers.map((worker) => ({ ...worker })),
+          title,
+          done,
+          onCancel,
+        );
         close = () => panel?.close();
         return panel;
       },
