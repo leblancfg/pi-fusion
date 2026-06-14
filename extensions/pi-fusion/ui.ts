@@ -573,6 +573,20 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m${remainingSeconds.toString().padStart(2, "0")}s` : `${seconds}s`;
 }
 
+function collapseEvents(events: string[]): string[] {
+  const out: string[] = [];
+  for (const event of events) {
+    const prev = out[out.length - 1];
+    if (prev !== undefined && prev.replace(/ ×\d+$/, "") === event) {
+      const match = prev.match(/ ×(\d+)$/);
+      out[out.length - 1] = `${event} ×${match ? Number(match[1]) + 1 : 2}`;
+    } else {
+      out.push(event);
+    }
+  }
+  return out;
+}
+
 function formatWorkerTiming(worker: FusionLiveWorkerState): string {
   const now = Date.now();
   const parts: string[] = [];
@@ -657,7 +671,7 @@ class FusionLivePanel {
     const lines = [
       border(`╭${"─".repeat(innerWidth)}╮`),
       this.wrapLine(this.headerText(), innerWidth, border),
-      this.wrapLine(this.tabBar(focus), innerWidth, border),
+      this.wrapLine(this.controlsLine(focus), innerWidth, border),
       border(`├${"─".repeat(innerWidth)}┤`),
     ];
 
@@ -695,8 +709,14 @@ class FusionLivePanel {
   }
 
   private headerText(): string {
+    const total = this.workers.length;
+    if (total <= 1) return this.theme.fg("accent", this.theme.bold(` ${this.title} `));
     const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
-    return this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${this.workers.length} `));
+    return this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${total} `));
+  }
+
+  private hasPrompts(): boolean {
+    return this.workers.some((worker) => Boolean(worker.prompt));
   }
 
   private statusIcon(status: FusionLiveWorkerState["status"]): string {
@@ -709,15 +729,19 @@ class FusionLivePanel {
     }[status];
   }
 
-  private tabBar(focus: number | null): string {
+  private controlsLine(focus: number | null): string {
+    const promptHint = this.hasPrompts() ? " • p prompts" : "";
+    if (this.workers.length <= 1) {
+      return ` ${this.theme.fg("dim", `esc cancel${promptHint}`)}`;
+    }
     const tabs = this.workers
       .map((worker, index) => {
         const label = `${index + 1}${this.statusIcon(worker.status)}`;
         return index === focus ? this.theme.fg("accent", `[${label}]`) : this.theme.fg("muted", ` ${label} `);
       })
       .join("");
-    const controls = this.theme.fg("dim", focus === null ? "1-9 focus • p prompts • esc cancel" : "0 split • 1-9 switch • p prompts • esc cancel");
-    return ` ${tabs}   ${controls}`;
+    const nav = focus === null ? "1-9 focus" : "0 split • 1-9 switch";
+    return ` ${tabs}   ${this.theme.fg("dim", `${nav}${promptHint} • esc cancel`)}`;
   }
 
   invalidate(): void {}
@@ -740,7 +764,8 @@ class FusionLivePanel {
       width,
       opts.reasoningLines,
     );
-    const eventText = worker.events.length > 0 ? `\n${worker.events.map((event) => `→ ${event}`).join("\n")}` : "";
+    const collapsed = collapseEvents(worker.events);
+    const eventText = collapsed.length > 0 ? `\n${collapsed.map((event) => `→ ${event}`).join("\n")}` : "";
     const outputLines = wrapPlainText(
       worker.output || eventText || (worker.status === "running" ? "(waiting for output…)" : "(no output)"),
       width,

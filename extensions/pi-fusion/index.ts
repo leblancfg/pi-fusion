@@ -131,10 +131,6 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      if (proc.pid) {
-        liveEvents.push(`pid ${proc.pid}`);
-        input.onLiveUpdate?.(input.index, { events: [...liveEvents] });
-      }
 
       const onAbort = () => {
         proc.kill("SIGTERM");
