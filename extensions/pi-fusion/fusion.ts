@@ -12,6 +12,8 @@ export interface FusionWorker {
 
 export interface FusionSettings {
   enabled: boolean;
+  discoveryEnabled: boolean;
+  rewriteEnabled: boolean;
   workerCount: number;
   workers: FusionWorker[];
   workerOutputBytes: number;
@@ -32,6 +34,8 @@ export interface PersistedFusionSettings extends Partial<FusionSettings> {
 export interface FusionFlags {
   "fusion-enabled"?: boolean | string;
   "fusion-disabled"?: boolean | string;
+  "fusion-no-discovery"?: boolean | string;
+  "fusion-no-rewrite"?: boolean | string;
   "fusion-workers"?: boolean | string;
   "fusion-output-bytes"?: boolean | string;
   "fusion-context-bytes"?: boolean | string;
@@ -80,6 +84,8 @@ export interface BypassInput {
 
 export const DEFAULT_SETTINGS: FusionSettings = {
   enabled: false,
+  discoveryEnabled: true,
+  rewriteEnabled: true,
   workerCount: 3,
   workers: [],
   workerOutputBytes: 12_000,
@@ -141,6 +147,9 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
   // Opt-in by default: fusion is off unless enabled via --fusion-enabled, a
   // persisted /fusion on, or the settings pane. --fusion-disabled forces off.
   settings.enabled = persisted?.enabled ?? (flags["fusion-enabled"] === true && flags["fusion-disabled"] !== true);
+  // Discovery and rewrite are on by default; --fusion-no-discovery/--fusion-no-rewrite turn them off.
+  settings.discoveryEnabled = persisted?.discoveryEnabled ?? flags["fusion-no-discovery"] !== true;
+  settings.rewriteEnabled = persisted?.rewriteEnabled ?? flags["fusion-no-rewrite"] !== true;
   settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
   settings.workerOutputBytes = parsePositiveInteger(flags["fusion-output-bytes"], settings.workerOutputBytes, {
     min: 1_000,
@@ -330,10 +339,13 @@ export function buildWorkerPrompt(input: {
 }): string {
   const discoverySection = input.discoveryContext.trim() ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n` : "";
   const recentSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
+  const discoveryGuidance = input.discoveryContext.trim()
+    ? "The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present."
+    : "Investigate with read/search tools as needed before planning.";
 
   return `${discoverySection}You are worker ${input.lens.name} in an LLM Fusion planning pass.
 
-Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present.
+Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. ${discoveryGuidance}
 
 Working directory: ${input.cwd}
 

@@ -95,6 +95,19 @@ describe("settings", () => {
     assert.equal(resolveSettings({ "fusion-enabled": true, "fusion-disabled": true }).enabled, false);
   });
 
+  it("keeps discovery and rewrite on by default, toggleable via flags and persisted settings", () => {
+    const defaults = resolveSettings({});
+    assert.equal(defaults.discoveryEnabled, true);
+    assert.equal(defaults.rewriteEnabled, true);
+
+    const off = resolveSettings({ "fusion-no-discovery": true, "fusion-no-rewrite": true });
+    assert.equal(off.discoveryEnabled, false);
+    assert.equal(off.rewriteEnabled, false);
+
+    assert.equal(resolveSettings({ "fusion-no-discovery": true }, { discoveryEnabled: true }).discoveryEnabled, true);
+    assert.equal(resolveSettings({}, { rewriteEnabled: false }).rewriteEnabled, false);
+  });
+
   it("lets persisted enabled override the startup flags", () => {
     assert.equal(resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 }).enabled, true);
     assert.equal(resolveSettings({ "fusion-enabled": true }, { enabled: false }).enabled, false);
@@ -180,6 +193,28 @@ describe("prompts", () => {
     assert.match(prompt, /opinions or conclusions of any kind/i);
     assert.match(prompt, /stop/i);
     assert.doesNotMatch(prompt, /why this context matters/i);
+  });
+
+  it("adapts worker guidance when there is no discovery context", () => {
+    const withDiscovery = buildWorkerPrompt({
+      task: "Add tests",
+      assignedPrompt: "Explore API tests first",
+      recentContext: "",
+      discoveryContext: "Discovery context",
+      cwd: "/repo",
+      lens: getWorkerLens(0),
+    });
+    const withoutDiscovery = buildWorkerPrompt({
+      task: "Add tests",
+      assignedPrompt: "Explore API tests first",
+      recentContext: "",
+      discoveryContext: "",
+      cwd: "/repo",
+      lens: getWorkerLens(0),
+    });
+    assert.match(withDiscovery, /shared discovery context above is loaded/i);
+    assert.doesNotMatch(withoutDiscovery, /shared discovery context above is loaded/i);
+    assert.match(withoutDiscovery, /Investigate with read\/search tools/i);
   });
 
   it("builds read-only numbered worker prompts with discovery context and assigned rewrite", () => {

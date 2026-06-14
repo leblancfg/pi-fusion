@@ -24,7 +24,7 @@ import {
   type PersistedFusionSettings,
   type WorkerResult,
 } from "./fusion.ts";
-import { showFusionPane, startFusionLivePanel, type FusionLiveWorkerState } from "./ui.ts";
+import { showFusionPane, startFusionLivePanel, type FusionLivePanelController, type FusionLiveWorkerState } from "./ui.ts";
 
 interface JsonMessage {
   role?: string;
@@ -264,6 +264,8 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
   const flags: FusionFlags = {
     "fusion-enabled": pi.getFlag("fusion-enabled"),
     "fusion-disabled": pi.getFlag("fusion-disabled"),
+    "fusion-no-discovery": pi.getFlag("fusion-no-discovery"),
+    "fusion-no-rewrite": pi.getFlag("fusion-no-rewrite"),
     "fusion-workers": pi.getFlag("fusion-workers"),
     "fusion-output-bytes": pi.getFlag("fusion-output-bytes"),
     "fusion-context-bytes": pi.getFlag("fusion-context-bytes"),
@@ -282,6 +284,8 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
 function settingsSummary(settings: FusionSettings): string {
   return [
     `enabled=${settings.enabled}`,
+    `discovery=${settings.discoveryEnabled}`,
+    `rewrite=${settings.rewriteEnabled}`,
     `workers=${settings.workerCount}`,
     `workerOutputBytes=${settings.workerOutputBytes}`,
     `contextBytes=${settings.contextBytes}`,
@@ -324,6 +328,16 @@ export default function piFusion(pi: ExtensionAPI): void {
   });
   pi.registerFlag("fusion-disabled", {
     description: "Force pi-fusion off on startup, overriding --fusion-enabled",
+    type: "boolean",
+    default: false,
+  });
+  pi.registerFlag("fusion-no-discovery", {
+    description: "Skip the discovery stage (on by default)",
+    type: "boolean",
+    default: false,
+  });
+  pi.registerFlag("fusion-no-rewrite", {
+    description: "Skip the prompt-rewrite stage; workers explore the original task (on by default)",
     type: "boolean",
     default: false,
   });
@@ -426,6 +440,8 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       if (command === "on") settings.enabled = true;
       else if (command === "off") settings.enabled = false;
+      else if (command === "discovery") settings.discoveryEnabled = value.toLowerCase() !== "off";
+      else if (command === "rewrite") settings.rewriteEnabled = value.toLowerCase() !== "off";
       else if (command === "workers") {
         settings.workerCount = resolveSettings({ "fusion-workers": value }, settings).workerCount;
         settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
@@ -450,7 +466,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -478,48 +494,59 @@ export default function piFusion(pi: ExtensionAPI): void {
       if (ctx.signal.aborted) abort.abort();
       else ctx.signal.addEventListener("abort", cancelFusion, { once: true });
     }
-    let activePanel = startFusionLivePanel(
-      ctx,
-      [{ index: 0, label: "discovery", lens: "context loading", status: "queued", output: "", reasoning: "", events: [] }],
-      "LLM Fusion discovery",
-      cancelFusion,
-    );
-    if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion: discovery");
+    let activePanel: FusionLivePanelController | undefined;
 
     try {
-      const rewritePromise = runWorker({
-        prompt: buildRewritePrompt({ task, recentContext, workerCount: settings.workerCount }),
-        cwd: ctx.cwd,
-        index: 0,
-        lens: "rewrite",
-        timeoutMs: Math.min(settings.timeoutMs, 120_000),
-        model: workerModel,
-        thinkingLevel: "minimal",
-        tools: "none",
-        signal: abort.signal,
-      });
+      const rewritePromise = settings.rewriteEnabled
+        ? runWorker({
+            prompt: buildRewritePrompt({ task, recentContext, workerCount: settings.workerCount }),
+            cwd: ctx.cwd,
+            index: 0,
+            lens: "rewrite",
+            timeoutMs: Math.min(settings.timeoutMs, 120_000),
+            model: workerModel,
+            thinkingLevel: "minimal",
+            tools: "none",
+            signal: abort.signal,
+          })
+        : undefined;
 
-      activePanel?.update(0, { status: "running" });
-      const discoveryResult = await runWorker({
-        prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
-        cwd: ctx.cwd,
-        index: 0,
-        lens: "discovery",
-        timeoutMs: settings.timeoutMs,
-        model: discoveryModel,
-        thinkingLevel: discoveryThinking,
-        tools: ["read", "grep", "find", "ls"],
-        signal: abort.signal,
-        onLiveUpdate: (_index, patch) => activePanel?.update(0, patch),
-      });
-      if (abort.signal.aborted) return undefined;
-      const discoveryContext = buildSharedDiscoveryContext(discoveryResult);
-      activePanel?.close();
-      activePanel = undefined;
+      let discoveryContext = "";
+      if (settings.discoveryEnabled) {
+        activePanel = startFusionLivePanel(
+          ctx,
+          [{ index: 0, label: "discovery", lens: "context loading", status: "queued", output: "", reasoning: "", events: [] }],
+          "LLM Fusion discovery",
+          cancelFusion,
+        );
+        if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion: discovery");
+        activePanel?.update(0, { status: "running" });
+        const discoveryResult = await runWorker({
+          prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
+          cwd: ctx.cwd,
+          index: 0,
+          lens: "discovery",
+          timeoutMs: settings.timeoutMs,
+          model: discoveryModel,
+          thinkingLevel: discoveryThinking,
+          tools: ["read", "grep", "find", "ls"],
+          signal: abort.signal,
+          onLiveUpdate: (_index, patch) => activePanel?.update(0, patch),
+        });
+        if (abort.signal.aborted) return undefined;
+        discoveryContext = buildSharedDiscoveryContext(discoveryResult);
+        activePanel?.close();
+        activePanel = undefined;
+      }
 
-      const rewriteResult = await rewritePromise;
-      if (abort.signal.aborted) return undefined;
-      const promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
+      let promptVariations: string[];
+      if (rewritePromise) {
+        const rewriteResult = await rewritePromise;
+        if (abort.signal.aborted) return undefined;
+        promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
+      } else {
+        promptVariations = Array.from({ length: settings.workerCount }, () => task);
+      }
       const statusLines = promptVariations.map((_, index) => `○ worker ${index + 1}: ${getWorkerLens(index).name}`);
       setFusionStatus(ctx, statusLines);
       const workerStates: FusionLiveWorkerState[] = promptVariations.map((variation, index) => ({
@@ -577,7 +604,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       return buildActorPrompt({
         originalText: task,
         discoveryContext,
-        promptVariations,
+        promptVariations: settings.rewriteEnabled ? promptVariations : [],
         workerResults,
         workerOutputBytes: settings.workerOutputBytes,
         imageCount,

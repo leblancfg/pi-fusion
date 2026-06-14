@@ -95,7 +95,7 @@ function padToWidth(text: string, width: number): string {
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = ["enabled", "workers", "discovery", "synthesizer", "save"] as const;
+  private readonly rows = ["enabled", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
 
   constructor(
     private readonly theme: Theme,
@@ -135,6 +135,8 @@ class FusionPane {
     }
     if (matchesKey(data, "space")) {
       if (row === "enabled") this.toggleEnabled();
+      else if (row === "discovery") this.settings.discoveryEnabled = !this.settings.discoveryEnabled;
+      else if (row === "rewrite") this.settings.rewriteEnabled = !this.settings.rewriteEnabled;
       return;
     }
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
@@ -154,15 +156,14 @@ class FusionPane {
     const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
 
     const workersValue = `${this.settings.workerCount}  ${th.fg("dim", "·")}  ${th.fg("accent", "configure ▸")}`;
+    const discoveryValue = this.settings.discoveryEnabled
+      ? formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking)
+      : th.fg("muted", "off");
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
       this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
-      this.renderSettingRow(
-        "discovery",
-        "Discovery",
-        formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking),
-        "enter model • ←/→ effort",
-      ),
+      this.renderSettingRow("discovery", "Discovery", discoveryValue, "space on/off • enter model • ←/→ effort"),
+      this.renderSettingRow("rewrite", "Rewrite", this.settings.rewriteEnabled ? th.fg("success", "on") : th.fg("muted", "off"), "space on/off"),
       this.renderSettingRow(
         "synthesizer",
         "Synthesizer",
@@ -198,6 +199,8 @@ class FusionPane {
       this.settings.workers = normalizeWorkerSlots(this.settings.workers, this.settings.workerCount);
     } else if (row === "discovery") {
       this.settings.discoveryThinking = cycleThinking(this.settings.discoveryThinking, delta);
+    } else if (row === "rewrite") {
+      this.settings.rewriteEnabled = !this.settings.rewriteEnabled;
     } else if (row === "synthesizer") {
       this.settings.synthesizerThinking = cycleThinking(this.settings.synthesizerThinking, delta);
     }
@@ -479,7 +482,7 @@ export async function showFusionPane(
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 14, margin: 2 },
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 16, margin: 2 },
       },
     );
 
