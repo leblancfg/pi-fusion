@@ -15,8 +15,16 @@ Type "pi"
 Enter
 Sleep 2s
 
-# Configure and enable the fast preset
-Type "/fusion preset fast"
+# Configure a cheap-planner profile without relying on a saved preset
+Type "/fusion workers 3"
+Enter
+Sleep 1s
+
+Type "/fusion worker-model google-vertex/gemini-3.5-flash"
+Enter
+Sleep 1s
+
+Type "/fusion worker-thinking off"
 Enter
 Sleep 1s
 

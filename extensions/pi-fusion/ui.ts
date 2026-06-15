@@ -12,9 +12,10 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { normalizeWorkerSlots, THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice, type FusionThinkingLevel } from "./fusion.ts";
+import { applyFusionPresetSettings, deleteFusionPreset, loadFusionPresets, saveFusionPreset, type LoadedFusionPreset } from "./presets.ts";
 
 interface FusionPaneResult {
-  action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesizer-model" | "configure-workers";
+  action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesizer-model" | "configure-workers" | "manage-presets";
   settings: FusionSettings;
 }
 
@@ -95,7 +96,7 @@ function padToWidth(text: string, width: number): string {
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = ["enabled", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
+  private readonly rows = ["enabled", "presets", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
 
   constructor(
     private readonly theme: Theme,
@@ -140,7 +141,8 @@ class FusionPane {
       return;
     }
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      if (row === "workers") this.done({ action: "configure-workers", settings: this.settings });
+      if (row === "presets") this.done({ action: "manage-presets", settings: this.settings });
+      else if (row === "workers") this.done({ action: "configure-workers", settings: this.settings });
       else if (row === "discovery") this.done({ action: "pick-discovery-model", settings: this.settings });
       else if (row === "synthesizer") this.done({ action: "pick-synthesizer-model", settings: this.settings });
       else if (row === "save") this.done({ action: "save", settings: this.settings });
@@ -156,11 +158,15 @@ class FusionPane {
     const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
 
     const workersValue = `${this.settings.workerCount}  ${th.fg("dim", "·")}  ${th.fg("accent", "configure ▸")}`;
+    const presetValue = this.settings.preset
+      ? `${this.settings.preset}  ${th.fg("dim", "·")}  ${th.fg("accent", "manage ▸")}`
+      : th.fg("muted", "none  ·  manage ▸");
     const discoveryValue = this.settings.discoveryEnabled
       ? formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking)
       : th.fg("muted", "off");
     const rows = [
       this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
+      this.renderSettingRow("presets", "Presets", presetValue, "enter load/save/delete"),
       this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
       this.renderSettingRow("discovery", "Discovery", discoveryValue, "space on/off • enter model • ←/→ effort"),
       this.renderSettingRow("rewrite", "Rewrite", this.settings.rewriteEnabled ? th.fg("success", "on") : th.fg("muted", "off"), "space on/off"),
@@ -194,6 +200,8 @@ class FusionPane {
   private adjust(row: (typeof this.rows)[number], delta: -1 | 1): void {
     if (row === "enabled") {
       this.toggleEnabled();
+    } else if (row === "presets") {
+      return;
     } else if (row === "workers") {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
       this.settings.workers = normalizeWorkerSlots(this.settings.workers, this.settings.workerCount);
@@ -407,6 +415,119 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
   );
 }
 
+function describePreset(preset: LoadedFusionPreset): string {
+  const settings = preset.settings;
+  const workers = settings.workerCount === undefined ? "workers:current" : `workers:${settings.workerCount}`;
+  const workerModel = settings.workerModel ?? "worker:current";
+  const synthesizerModel = settings.synthesizerModel ?? "synth:current";
+  const scope = preset.scope === "project" ? "project" : "global";
+  const description = preset.description ? `${preset.description} · ` : "";
+  return `${description}${scope} · ${workers} · ${workerModel} → ${synthesizerModel}`;
+}
+
+async function showFusionPresetManager(ctx: ExtensionContext, draft: FusionSettings): Promise<FusionSettings> {
+  const presets = await loadFusionPresets(ctx.cwd);
+  const items: SelectItem[] = [
+    {
+      value: "save-global",
+      label: "Save current settings as a global preset",
+      description: "Writes to ~/.pi/agent/fusion.json",
+    },
+    {
+      value: "save-project",
+      label: "Save current settings as a project preset",
+      description: "Writes to .pi/fusion.json in this repository",
+    },
+    ...presets.map((preset) => ({
+      value: `load:${preset.name}`,
+      label: preset.name === draft.preset ? `${preset.name} (loaded)` : preset.name,
+      description: describePreset(preset),
+    })),
+    ...presets.map((preset) => ({
+      value: `delete:${preset.scope}:${preset.name}`,
+      label: `Delete ${preset.name}`,
+      description: `Remove the ${preset.scope} preset from ${preset.path}`,
+    })),
+  ];
+
+  const choice = await ctx.ui.custom<string | null>(
+    (tui, theme, _keybindings, done) => {
+      const list = new SelectList(items, Math.min(Math.max(items.length, 1), 14), {
+        selectedPrefix: (text) => theme.fg("accent", text),
+        selectedText: (text) => theme.fg("accent", text),
+        description: (text) => theme.fg("muted", text),
+        scrollInfo: (text) => theme.fg("dim", text),
+        noMatch: (text) => theme.fg("warning", text),
+      });
+      list.onSelect = (item) => done(item.value);
+      list.onCancel = () => done(null);
+
+      const container = new Container();
+      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+      container.addChild(new Text(theme.fg("accent", theme.bold("Fusion presets")), 1, 0));
+      container.addChild(new Text(theme.fg("dim", "Saved settings snapshots. Project presets override global presets with the same name."), 1, 0));
+      container.addChild(list);
+      container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
+      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+
+      return {
+        render(width: number) {
+          return container.render(width);
+        },
+        invalidate() {
+          container.invalidate();
+        },
+        handleInput(data: string) {
+          list.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    },
+    {
+      overlay: true,
+      overlayOptions: { anchor: "center", width: "82%", minWidth: 72, maxHeight: "80%", margin: 2 },
+    },
+  );
+
+  if (!choice) return draft;
+
+  if (choice === "save-global" || choice === "save-project") {
+    const name = await ctx.ui.input("Preset name", draft.preset ?? "");
+    if (!name?.trim()) return draft;
+    const description = await ctx.ui.input("Preset description (optional)", "");
+    const scope = choice === "save-project" ? "project" : "global";
+    const savedPath = await saveFusionPreset(ctx.cwd, name, draft, scope, description);
+    ctx.ui.notify(`Saved fusion preset "${name.trim()}" to ${savedPath}`, "info");
+    return { ...draft, preset: name.trim() };
+  }
+
+  if (choice.startsWith("load:")) {
+    const name = choice.slice("load:".length);
+    const preset = presets.find((candidate) => candidate.name === name);
+    if (!preset) {
+      ctx.ui.notify(`Preset "${name}" no longer exists`, "warning");
+      return draft;
+    }
+    ctx.ui.notify(`Loaded fusion preset "${name}"`, "info");
+    return applyFusionPresetSettings(draft, name, preset);
+  }
+
+  if (choice.startsWith("delete:")) {
+    const [, scope, name] = choice.split(":");
+    if ((scope !== "global" && scope !== "project") || !name) return draft;
+    const ok = await ctx.ui.confirm(
+      `Delete preset "${name}"?`,
+      `This removes it from ${scope === "global" ? "~/.pi/agent/fusion.json" : ".pi/fusion.json"}.`,
+    );
+    if (!ok) return draft;
+    const deleted = await deleteFusionPreset(ctx.cwd, name, scope);
+    ctx.ui.notify(deleted ? `Deleted fusion preset "${name}"` : `Preset "${name}" was already gone`, deleted ? "info" : "warning");
+    return draft.preset === name ? { ...draft, preset: undefined } : draft;
+  }
+
+  return draft;
+}
+
 async function configureWorkers(ctx: ExtensionContext, draft: FusionSettings, choices: ModelChoice[]): Promise<void> {
   let selected = 0;
 
@@ -482,7 +603,7 @@ export async function showFusionPane(
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 16, margin: 2 },
+        overlayOptions: { anchor: "center", width: 78, maxHeight: 18, margin: 2 },
       },
     );
 
@@ -490,6 +611,11 @@ export async function showFusionPane(
     draft = cloneSettings(result.settings);
 
     if (result.action === "save") return draft;
+
+    if (result.action === "manage-presets") {
+      draft = cloneSettings(await showFusionPresetManager(ctx, draft));
+      continue;
+    }
 
     if (result.action === "configure-workers") {
       await configureWorkers(ctx, draft, choices);
