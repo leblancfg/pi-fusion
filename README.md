@@ -7,11 +7,19 @@
 <p align="center">
   <a href="https://github.com/leblancfg/pi-fusion/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leblancfg/pi-fusion/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/leblancfg/pi-fusion/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/leblancfg/pi-fusion?style=flat-square"></a>
-  <a href="https://pi.dev/packages/pi-fusion"><img alt="pi package" src="https://img.shields.io/badge/pi-package-7c3aed?style=flat-square"></a>
+  <a href="https://pi.dev/packages/@leblancfg/pi-fusion"><img alt="pi package" src="https://img.shields.io/badge/pi-package-7c3aed?style=flat-square"></a>
   <a href="https://leblancfg.com/pi-fusion/"><img alt="docs" src="https://img.shields.io/badge/docs-github%20pages-2563eb?style=flat-square"></a>
 </p>
 
 ## How to install
+
+Install as a global pi package from npm:
+
+```bash
+pi install npm:@leblancfg/pi-fusion
+```
+
+Or install directly from the GitHub repository:
 
 ```bash
 pi install git:github.com/leblancfg/pi-fusion
@@ -278,6 +286,6 @@ This package is standalone. It declares one pi extension:
 ## Links
 
 - Docs site: <https://leblancfg.com/pi-fusion/>
-- pi package gallery: <https://pi.dev/packages/pi-fusion>
+- pi package gallery: <https://pi.dev/packages/@leblancfg/pi-fusion>
 - pi extension docs: <https://pi.dev/docs/extensions>
 - Issues: <https://github.com/leblancfg/pi-fusion/issues>
