@@ -76,6 +76,37 @@ export interface WorkerResult {
   };
 }
 
+export interface FusionTraceResult {
+  label: string;
+  lens: string;
+  status: string;
+  ok: boolean;
+  model: string | undefined;
+  prompt?: string;
+  output: string;
+  reasoning: string;
+  toolContext: string;
+  stderr: string;
+  usage: WorkerResult["usage"];
+}
+
+export interface FusionTraceDetails {
+  task: string;
+  discoveryEnabled: boolean;
+  rewriteEnabled: boolean;
+  promptVariations: string[];
+  discovery?: FusionTraceResult;
+  rewrite?: FusionTraceResult;
+  workers: FusionTraceResult[];
+}
+
+export interface FusionTraceMessage {
+  customType: typeof FUSION_TRACE_MESSAGE_TYPE;
+  content: string;
+  display: true;
+  details: FusionTraceDetails;
+}
+
 export interface BypassInput {
   enabled: boolean;
   text: string;
@@ -151,6 +182,7 @@ export function consumeNextTurnFusion(settings: FusionSettings): boolean {
 
 export const FUSION_STATUS_OFF = "∪\u0338";
 export const FUSION_STATUS_ON = "∪";
+export const FUSION_TRACE_MESSAGE_TYPE = "pi-fusion-run";
 
 export function fusionStatusGlyph(enabled: boolean): string {
   return enabled ? FUSION_STATUS_ON : FUSION_STATUS_OFF;
@@ -237,6 +269,121 @@ export function truncateUtf8(input: string, maxBytes: number): string {
 
   const omitted = bytes - Buffer.byteLength(input.slice(0, low), "utf8");
   return `${input.slice(0, low)}\n\n[pi-fusion truncated ${omitted} bytes]`;
+}
+
+const TRACE_TASK_BYTES = 4_000;
+const TRACE_PROMPT_BYTES = 4_000;
+const TRACE_REASONING_BYTES = 8_000;
+const TRACE_OUTPUT_BYTES = 16_000;
+const TRACE_TOOL_CONTEXT_BYTES = 16_000;
+const TRACE_STDERR_BYTES = 4_000;
+
+function workerStatus(result: WorkerResult): string {
+  if (result.ok) return "completed";
+  if (result.timedOut) return "timed out";
+  return `failed${result.exitCode === null ? "" : ` (${result.exitCode})`}`;
+}
+
+function traceResult(label: string, result: WorkerResult, prompt?: string): FusionTraceResult {
+  return {
+    label,
+    lens: result.lens,
+    status: workerStatus(result),
+    ok: result.ok,
+    model: result.model,
+    prompt: prompt ? truncateUtf8(prompt.trim(), TRACE_PROMPT_BYTES) : undefined,
+    output: truncateUtf8(result.output.trim() || "(no output)", TRACE_OUTPUT_BYTES),
+    reasoning: truncateUtf8(result.reasoning.trim(), TRACE_REASONING_BYTES),
+    toolContext: truncateUtf8(result.toolContext.trim(), TRACE_TOOL_CONTEXT_BYTES),
+    stderr: truncateUtf8(result.stderr.trim(), TRACE_STDERR_BYTES),
+    usage: result.usage,
+  };
+}
+
+function formatTraceUsage(result: FusionTraceResult): string {
+  const usage = result.usage;
+  const parts = [`status: ${result.status}`];
+  if (result.model) parts.push(`model: ${result.model}`);
+  if (usage.turns > 0) parts.push(`turns: ${usage.turns}`, `tokens: ↑${usage.input} ↓${usage.output}`);
+  if (usage.cacheRead > 0 || usage.cacheWrite > 0) parts.push(`cache: read ${usage.cacheRead} write ${usage.cacheWrite}`);
+  if (usage.cost > 0) parts.push(`cost: $${usage.cost.toFixed(4)}`);
+  return parts.join(" • ");
+}
+
+function formatTraceResult(result: FusionTraceResult): string {
+  return [
+    `## ${result.label}`,
+    formatTraceUsage(result),
+    result.prompt ? `\n### prompt\n${result.prompt}` : "",
+    result.reasoning ? `\n### reasoning\n${result.reasoning}` : "",
+    `\n### output\n${result.output}`,
+    result.toolContext ? `\n### tool context\n${result.toolContext}` : "",
+    result.stderr ? `\n### stderr\n${result.stderr}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function looksLikeFusionTraceDetails(details: unknown): details is FusionTraceDetails {
+  if (!details || typeof details !== "object") return false;
+  const candidate = details as Partial<FusionTraceDetails>;
+  return typeof candidate.task === "string" && Array.isArray(candidate.workers) && Array.isArray(candidate.promptVariations);
+}
+
+export function buildFusionTraceMessage(input: {
+  task: string;
+  discoveryEnabled: boolean;
+  rewriteEnabled: boolean;
+  promptVariations: string[];
+  discoveryResult?: WorkerResult;
+  rewriteResult?: WorkerResult;
+  workerResults: WorkerResult[];
+}): FusionTraceMessage {
+  const completedWorkers = input.workerResults.filter((result) => result.ok).length;
+  const discoveryStatus = input.discoveryResult
+    ? input.discoveryResult.ok
+      ? "discovery completed"
+      : `discovery ${workerStatus(input.discoveryResult)}`
+    : "discovery skipped";
+  const rewriteStatus = input.rewriteResult
+    ? input.rewriteResult.ok
+      ? "rewrite completed"
+      : `rewrite ${workerStatus(input.rewriteResult)}`
+    : "rewrite skipped";
+
+  return {
+    customType: FUSION_TRACE_MESSAGE_TYPE,
+    content: `∪ pi-fusion transcript: ${discoveryStatus}; ${rewriteStatus}; ${completedWorkers}/${input.workerResults.length} workers completed. Expand for planner output.`,
+    display: true,
+    details: {
+      task: truncateUtf8(input.task.trim(), TRACE_TASK_BYTES),
+      discoveryEnabled: input.discoveryEnabled,
+      rewriteEnabled: input.rewriteEnabled,
+      promptVariations: input.promptVariations.map((prompt) => truncateUtf8(prompt.trim(), TRACE_PROMPT_BYTES)),
+      discovery: input.discoveryResult ? traceResult("discovery", input.discoveryResult) : undefined,
+      rewrite: input.rewriteResult ? traceResult("rewrite", input.rewriteResult) : undefined,
+      workers: input.workerResults.map((result, index) => traceResult(`worker ${index + 1}: ${result.lens}`, result, input.promptVariations[index])),
+    },
+  };
+}
+
+export function formatFusionTraceDetails(details: unknown): string {
+  if (!looksLikeFusionTraceDetails(details)) return "No pi-fusion transcript details are available for this message.";
+  const prompts = details.promptVariations.length
+    ? `## worker prompt variations\n${details.promptVariations.map((prompt, index) => `${index + 1}. ${prompt}`).join("\n\n")}`
+    : "";
+
+  return [
+    "# pi-fusion transcript",
+    `discovery: ${details.discoveryEnabled ? "on" : "off"} • rewrite: ${details.rewriteEnabled ? "on" : "off"} • workers: ${details.workers.length}`,
+    `\n## original request\n${details.task || "(empty)"}`,
+    prompts,
+    details.discovery ? formatTraceResult(details.discovery) : "",
+    details.rewrite ? formatTraceResult(details.rewrite) : "",
+    ...details.workers.map((result) => formatTraceResult(result)),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function getWorkerLens(index: number): WorkerLens {

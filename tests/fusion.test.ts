@@ -4,10 +4,12 @@ import {
   ACTOR_PROMPT_MARKER,
   buildActorPrompt,
   buildDiscoveryPrompt,
+  buildFusionTraceMessage,
   buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
   consumeNextTurnFusion,
+  formatFusionTraceDetails,
   formatToolEvent,
   fusionStatusGlyph,
   getWorkerLens,
@@ -18,6 +20,7 @@ import {
   resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
+  FUSION_TRACE_MESSAGE_TYPE,
   type WorkerResult,
 } from "../extensions/pi-fusion/fusion.ts";
 
@@ -284,6 +287,46 @@ describe("prompts", () => {
     assert.deepEqual(parsePromptVariations('["a","b","c","d"]', 3, "fallback"), ["a", "b", "c"]);
     assert.deepEqual(parsePromptVariations("1. one\n2. two", 2, "fallback"), ["one", "two"]);
     assert.deepEqual(parsePromptVariations("", 2, "fallback"), ["fallback", "fallback"]);
+  });
+});
+
+describe("fusion trace", () => {
+  it("builds a visible custom message with expanded planner details outside content", () => {
+    const message = buildFusionTraceMessage({
+      task: "Implement feature",
+      discoveryEnabled: true,
+      rewriteEnabled: true,
+      promptVariations: ["Explore API", "Explore tests"],
+      discoveryResult: worker({ lens: "discovery", output: "loaded src/index.ts" }),
+      rewriteResult: worker({ lens: "rewrite", output: '["Explore API", "Explore tests"]' }),
+      workerResults: [worker({ index: 0, lens: "#1", output: "plan A" }), worker({ index: 1, lens: "#2", output: "plan B" })],
+    });
+
+    assert.equal(message.customType, FUSION_TRACE_MESSAGE_TYPE);
+    assert.equal(message.display, true);
+    assert.match(message.content, /pi-fusion transcript/);
+    assert.doesNotMatch(message.content, /plan A/);
+    assert.equal(message.details.workers.length, 2);
+
+    const expanded = formatFusionTraceDetails(message.details);
+    assert.match(expanded, /discovery/);
+    assert.match(expanded, /Explore API/);
+    assert.match(expanded, /plan A/);
+    assert.match(expanded, /tool context/);
+  });
+
+  it("bounds large trace sections before persisting them", () => {
+    const message = buildFusionTraceMessage({
+      task: "x".repeat(10_000),
+      discoveryEnabled: false,
+      rewriteEnabled: false,
+      promptVariations: ["p".repeat(10_000)],
+      workerResults: [worker({ output: "o".repeat(40_000), reasoning: "r".repeat(20_000), toolContext: "t".repeat(40_000) })],
+    });
+
+    const expanded = formatFusionTraceDetails(message.details);
+    assert.match(expanded, /pi-fusion truncated/);
+    assert.ok(Buffer.byteLength(expanded, "utf8") < 60_000);
   });
 });
 

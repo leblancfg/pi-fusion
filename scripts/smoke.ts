@@ -11,6 +11,7 @@ const events: string[] = [];
 const stub = {
   registerFlag: (name: string) => flags.push(name),
   registerCommand: (name: string) => commands.push(name),
+  registerMessageRenderer: () => {},
   on: (event: string) => events.push(event),
   getFlag: () => undefined,
   getThinkingLevel: () => "off",

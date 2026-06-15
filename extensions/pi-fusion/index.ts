@@ -3,15 +3,19 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import {
   buildActorPrompt,
   buildDiscoveryPrompt,
+  buildFusionTraceMessage,
   buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
   consumeNextTurnFusion,
   DEFAULT_SETTINGS,
+  formatFusionTraceDetails,
   formatToolEvent,
+  FUSION_TRACE_MESSAGE_TYPE,
   fusionStatusGlyph,
   getWorkerLens,
   normalizeWorkerSlots,
@@ -56,6 +60,11 @@ interface RunWorkerInput {
   tools?: string[] | "none";
   signal?: AbortSignal;
   onLiveUpdate?: (index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>) => void;
+}
+
+interface FusionRunResult {
+  actorPrompt: string;
+  traceMessage: ReturnType<typeof buildFusionTraceMessage>;
 }
 
 function getPiInvocation(args: string[]): { command: string; args: string[] } {
@@ -326,6 +335,13 @@ export default function piFusion(pi: ExtensionAPI): void {
   let settings: FusionSettings = { ...DEFAULT_SETTINGS };
   let armedForNextTurn = false;
 
+  pi.registerMessageRenderer(FUSION_TRACE_MESSAGE_TYPE, (message, { expanded }, theme) => {
+    const body = expanded
+      ? formatFusionTraceDetails(message.details)
+      : `${message.content}\n\n${theme.fg("dim", "Expand to show discovery, rewrite, and worker output.")}`;
+    return new Text(body, 1, 1, (text) => theme.bg("customMessageBg", text));
+  });
+
   pi.registerFlag("fusion-enabled", {
     description: "Enable pi-fusion on startup (off by default; fusion multiplies token usage)",
     type: "boolean",
@@ -558,7 +574,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     clearFusionStatus(ctx);
   });
 
-  async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<string | undefined> {
+  async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<FusionRunResult | undefined> {
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
     const currentModel = currentModelSpec(ctx);
     const workerModel = settings.workerModel ?? currentModel;
@@ -571,6 +587,8 @@ export default function piFusion(pi: ExtensionAPI): void {
       else ctx.signal.addEventListener("abort", cancelFusion, { once: true });
     }
     let activePanel: FusionLivePanelController | undefined;
+    let discoveryResult: WorkerResult | undefined;
+    let rewriteResult: WorkerResult | undefined;
 
     try {
       const rewritePromise = settings.rewriteEnabled
@@ -597,7 +615,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         );
         setFusionStatus(ctx, undefined);
         activePanel?.update(0, { status: "running" });
-        const discoveryResult = await runWorker({
+        discoveryResult = await runWorker({
           prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
           cwd: ctx.cwd,
           index: 0,
@@ -617,7 +635,7 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       let promptVariations: string[];
       if (rewritePromise) {
-        const rewriteResult = await rewritePromise;
+        rewriteResult = await rewritePromise;
         if (abort.signal.aborted) return undefined;
         promptVariations = parsePromptVariations(rewriteResult.output, settings.workerCount, task);
       } else {
@@ -677,14 +695,25 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
       if (settings.synthesizerThinking) pi.setThinkingLevel(settings.synthesizerThinking);
 
-      return buildActorPrompt({
-        originalText: task,
-        discoveryContext,
-        promptVariations: settings.rewriteEnabled ? promptVariations : [],
-        workerResults,
-        workerOutputBytes: settings.workerOutputBytes,
-        imageCount,
-      });
+      return {
+        actorPrompt: buildActorPrompt({
+          originalText: task,
+          discoveryContext,
+          promptVariations: settings.rewriteEnabled ? promptVariations : [],
+          workerResults,
+          workerOutputBytes: settings.workerOutputBytes,
+          imageCount,
+        }),
+        traceMessage: buildFusionTraceMessage({
+          task,
+          discoveryEnabled: settings.discoveryEnabled,
+          rewriteEnabled: settings.rewriteEnabled,
+          promptVariations: settings.rewriteEnabled ? promptVariations : [],
+          discoveryResult,
+          rewriteResult,
+          workerResults,
+        }),
+      };
     } catch (error) {
       if (ctx.hasUI) {
         const message = error instanceof Error ? error.message : String(error);
@@ -716,8 +745,8 @@ export default function piFusion(pi: ExtensionAPI): void {
     consumeNextTurnFusion(settings);
     persist();
     setFusionStatus(ctx, undefined);
-    const bundle = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
-    if (!bundle) return;
-    return { systemPrompt: `${event.systemPrompt}\n\n${bundle}` };
+    const result = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
+    if (!result) return;
+    return { message: result.traceMessage, systemPrompt: `${event.systemPrompt}\n\n${result.actorPrompt}` };
   });
 }
