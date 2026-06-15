@@ -257,7 +257,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
 }
 
 function readPersistedSettings(ctx: ExtensionContext): PersistedFusionSettings | undefined {
-  const entries = ctx.sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>;
+  const entries = ctx.sessionManager.getBranch() as Array<{ type?: string; customType?: string; data?: unknown }>;
   const latest = entries.filter((entry) => entry.type === "custom" && entry.customType === "pi-fusion-settings").pop();
   if (!latest || !latest.data || typeof latest.data !== "object") return undefined;
   return latest.data as PersistedFusionSettings;
@@ -422,6 +422,12 @@ export default function piFusion(pi: ExtensionAPI): void {
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
+  function clearFusionStatus(ctx: ExtensionContext): void {
+    if (!ctx.hasUI) return;
+    ctx.ui.setStatus("pi-fusion", undefined);
+    ctx.ui.setWidget("pi-fusion", undefined);
+  }
+
   async function loadPresetByName(ctx: ExtensionContext, name: string): Promise<boolean> {
     const presets = await loadFusionPresets(ctx.cwd);
     const preset = findFusionPreset(presets, name);
@@ -541,6 +547,15 @@ export default function piFusion(pi: ExtensionAPI): void {
       await loadPresetByName(ctx, presetFlag.trim());
     }
     setFusionStatus(ctx, undefined);
+  });
+
+  pi.on("session_compact", async (_event, ctx) => {
+    persist();
+    setFusionStatus(ctx, undefined);
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    clearFusionStatus(ctx);
   });
 
   async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<string | undefined> {
