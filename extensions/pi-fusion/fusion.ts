@@ -149,8 +149,11 @@ export function consumeNextTurnFusion(settings: FusionSettings): boolean {
   return true;
 }
 
+export const FUSION_STATUS_OFF = "∪\u0338";
+export const FUSION_STATUS_ON = "∪";
+
 export function fusionStatusGlyph(enabled: boolean): string {
-  return enabled ? "φ●" : "φ○";
+  return enabled ? FUSION_STATUS_ON : FUSION_STATUS_OFF;
 }
 
 export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
