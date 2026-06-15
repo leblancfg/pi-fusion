@@ -1,4 +1,11 @@
-# pi-fusion presets
+---
+layout: default
+title: Presets
+heading: pi-fusion presets
+lead: Save and load named snapshots of the fusion settings pane without relying on baked-in model assumptions.
+description: pi-fusion preset documentation, including global and project-local JSON files, slash commands, startup flags, and examples.
+permalink: /presets/
+---
 
 Presets are named snapshots of the `/fusion` settings pane. They exist so you can save configurations that match your own model access, budget, and task shape instead of relying on hard-coded defaults that age badly.
 

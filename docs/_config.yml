@@ -1,0 +1,12 @@
+title: pi-fusion
+description: Parallel agentic planning and test-time compute scaling for pi coding agents.
+url: https://leblancfg.com
+baseurl: /pi-fusion
+repository: leblancfg/pi-fusion
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+exclude:
+  - node_modules
+  - package.json
+  - pnpm-lock.yaml

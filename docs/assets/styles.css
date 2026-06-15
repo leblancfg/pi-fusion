@@ -1,0 +1,324 @@
+@font-face {
+  font-family: "Space Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/space-mono-400.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Space Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/space-mono-700.ttf") format("truetype");
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --surface: #14161d;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8eaed;
+  --muted: #9aa0aa;
+  --faint: #6b7280;
+  --accent: #a78bfa;
+  --accent-ink: #0b0d12;
+  --font-display: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+main {
+  width: min(940px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 96px 0 80px;
+  overflow-wrap: anywhere;
+}
+
+.site-header {
+  margin-bottom: 48px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 22px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 34px rgba(167, 139, 250, 0.22);
+}
+
+.brand-mark:hover {
+  text-decoration: none;
+  border-color: #c4b5fd;
+}
+
+.brand-orbit {
+  transform: translateY(-1px);
+}
+
+.eyebrow,
+.section-label,
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  margin: 16px 0 0;
+}
+
+h2 {
+  margin: 64px 0 16px;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  margin: 36px 0 10px;
+  font-size: 18px;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.55;
+  max-width: 58ch;
+  margin: 20px 0 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+}
+
+.button:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+}
+
+.button.primary {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.button.primary:hover {
+  background: #b9a4fb;
+}
+
+.content > :first-child {
+  margin-top: 0;
+}
+
+.diagram,
+.callout,
+.install,
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.diagram {
+  margin: 40px 0 0;
+  padding: 28px 24px;
+}
+
+.diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.caption {
+  margin: 14px 2px 0;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+.install,
+.callout {
+  padding: 16px 18px;
+}
+
+.section-label {
+  margin: 72px 0 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card {
+  min-width: 0;
+  padding: 24px;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+pre {
+  margin: 18px 0;
+  padding: 16px 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card pre,
+.install pre {
+  margin: 0 0 10px;
+  padding: 0;
+  color: var(--accent);
+  border: 0;
+  background: transparent;
+}
+
+table {
+  width: 100%;
+  margin: 24px 0;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+th,
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--accent);
+  background: rgba(167, 139, 250, 0.08);
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+blockquote {
+  margin: 24px 0;
+  padding: 0 0 0 18px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+footer {
+  margin-top: 72px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--faint);
+}
+
+@media (max-width: 760px) {
+  main {
+    padding: 64px 0;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

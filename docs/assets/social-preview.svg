@@ -22,9 +22,15 @@
       <path d="M0,0 L0,8 L11,4 z" fill="#93c5fd"/>
     </marker>
     <style>
-      text { font-family: Arial, Helvetica, sans-serif; }
-      .kicker { font-size: 25px; font-weight: 800; fill: #c4b5fd; letter-spacing: 3px; }
-      .title { font-size: 104px; font-weight: 850; fill: #ffffff; }
+      @font-face {
+        font-family: 'Space Mono';
+        font-style: normal;
+        font-weight: 700;
+        src: url('fonts/space-mono-700.ttf') format('truetype');
+      }
+      text { font-family: 'Space Mono', Menlo, Monaco, Consolas, monospace; }
+      .kicker { font-size: 25px; font-weight: 700; fill: #c4b5fd; letter-spacing: 3px; }
+      .title { font-size: 104px; font-weight: 700; fill: #ffffff; }
       .sub { font-size: 35px; font-weight: 700; fill: #dbeafe; }
       .small { font-size: 24px; font-weight: 650; fill: #cbd5e1; }
       .model { fill: #111827; stroke: #a78bfa; stroke-width: 3; filter: url(#shadow); }
@@ -34,7 +40,9 @@
       .mergeText { font-size: 33px; font-weight: 850; fill: #f8fafc; }
       .finalBox { fill: url(#finalGradient); filter: url(#shadow); }
       .finalText { font-size: 39px; font-weight: 850; fill: #062033; }
-      .finalSub { font-size: 22px; font-weight: 750; fill: #075069; }
+      .finalSub { font-size: 22px; font-weight: 700; fill: #075069; }
+      .logoCircle { fill: none; stroke: #c4b5fd; stroke-width: 7; filter: url(#shadow); }
+      .logoText { font-size: 76px; font-weight: 700; fill: #f8fafc; }
       .line { fill: none; stroke: #38bdf8; stroke-width: 5; stroke-linecap: round; marker-end: url(#arrow); opacity: 0.95; }
       .finalLine { fill: none; stroke: #c4b5fd; stroke-width: 6; stroke-linecap: round; marker-end: url(#arrow); opacity: 0.95; }
     </style>
@@ -44,6 +52,9 @@
   <rect width="1280" height="640" fill="url(#glow)"/>
   <circle cx="1125" cy="96" r="220" fill="#38bdf8" opacity="0.10"/>
   <circle cx="80" cy="610" r="245" fill="#8b5cf6" opacity="0.20"/>
+
+  <circle cx="1120" cy="132" r="58" class="logoCircle"/>
+  <text x="1120" y="157" text-anchor="middle" class="logoText">∪</text>
 
   <text x="78" y="112" class="kicker">COMPOUND AI FOR PI</text>
   <text x="74" y="236" class="title">pi-fusion</text>
