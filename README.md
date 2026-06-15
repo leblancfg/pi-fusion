@@ -35,7 +35,7 @@ Open pi and turn it on from the settings pane:
 
 The practical version: spend a little latency to buy fewer blind spots before the agent edits your repo. I built it as a test harness, not a grand theory of agency. It is useful when the problem is fuzzy enough that one model path may miss something.
 
-N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is similar, but different. It does not call OpenRouter Fusion, pick a hidden model panel, or use a judge model. It runs local read-only pi subprocesses against your working tree and hands their notes to the actor model you already chose. You control all configuration of how this happens.
+N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is similar. It runs local read-only pi subprocesses against your working tree, and hands their notes to the actor model you already chose. You control all configuration of how this happens.
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,7 @@ flowchart LR
 
 Coding agents often make the first plausible plan they see. That is fine for chores. It gets sketchier when a task has hidden coupling: unfamiliar code paths, unclear product constraints, or a suspicious test failure that smells like three separate bugs wearing one trench coat.
 
-pi-fusion is a tiny compound AI system for coding: multiple model calls at inference time, coordinated by boring TypeScript, merged back into one actor response. Same broad family as compound inference systems, inference-time scaling, test-time compute, model panels, multi-agent deliberation, and Mixture-of-Agents. Less grand when you run it locally. More useful, I think.
+`pi-fusion` is a tiny compound AI system for coding: multiple model calls at inference time, coordinated by boring TypeScript, merged back into one actor response. Same broad family as compound inference systems, inference-time scaling, test-time compute, model panels, multi-agent deliberation, and Mixture-of-Agents. Less grand when you run it locally. More useful, I think.
 
 The bet is simple: not all reasoning has to happen as one long serial chain inside the most expensive model. Some of it can run in parallel across slightly cheaper or dumber models, then get compressed into a single final turn. OpenAI's [o1 write-up](https://openai.com/index/learning-to-reason-with-llms/) made the test-time-compute axis feel obvious: give a model more thinking budget and it can do better. The compound-systems literature asks the neighboring question: what if some of that budget is more calls, more samples, or more agents instead of one longer hidden chain?
 
@@ -105,7 +105,7 @@ Bad fit:
 - Tiny edits where startup latency costs more than the task.
 - Prompts with images. The actor can see them; discovery and workers currently cannot.
 - Anything where read-only subprocesses are not allowed to inspect the working tree.
-- Fully non-interactive runs where you need progress output on stdout. pi-fusion stays quiet there so it does not corrupt print/JSON output.
+- Fully non-interactive runs where you need progress output on stdout. `pi-fusion` stays quiet there so it does not corrupt print/JSON output.
 
 ## Configure it
 
@@ -195,7 +195,7 @@ pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-Fusion is off by default. Use `--fusion-enabled` to start with the next eligible turn armed; `--fusion-disabled` forces it off. After a fused turn starts, pi-fusion automatically disarms itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at startup.
+Fusion is off by default. Use `--fusion-enabled` to start with the next eligible turn armed; `--fusion-disabled` forces it off. After a fused turn starts, `pi-fusion` automatically disarms itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at startup.
 
 ## What gets sent where
 
