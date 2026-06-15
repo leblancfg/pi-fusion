@@ -9,8 +9,10 @@ import {
   buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
+  consumeNextTurnFusion,
   DEFAULT_SETTINGS,
   formatToolEvent,
+  fusionStatusGlyph,
   getWorkerLens,
   normalizeWorkerSlots,
   parsePromptVariations,
@@ -285,7 +287,7 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
 
 function settingsSummary(settings: FusionSettings): string {
   return [
-    `enabled=${settings.enabled}`,
+    `armed=${settings.enabled}`,
     `discovery=${settings.discoveryEnabled}`,
     `rewrite=${settings.rewriteEnabled}`,
     `workers=${settings.workerCount}`,
@@ -400,7 +402,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     default: "current",
   });
   pi.registerFlag("fusion-preset", {
-    description: "Apply a pre-configured fusion configuration profile: fast, deep, budget",
+    description: "Load a named pi-fusion preset from ~/.pi/agent/fusion.json or .pi/fusion.json",
     type: "string",
     default: "",
   });
@@ -412,11 +414,11 @@ export default function piFusion(pi: ExtensionAPI): void {
   function setFusionStatus(ctx: ExtensionContext, lines: string[] | undefined): void {
     if (!ctx.hasUI) return;
     if (!lines) {
-      ctx.ui.setStatus("pi-fusion", settings.enabled ? undefined : "fusion off");
+      ctx.ui.setStatus("pi-fusion", fusionStatusGlyph(settings.enabled));
       ctx.ui.setWidget("pi-fusion", undefined);
       return;
     }
-    ctx.ui.setStatus("pi-fusion", `fusion ${lines.filter((line) => line.includes("●") || line.includes("⊘")).length}/${lines.length}`);
+    ctx.ui.setStatus("pi-fusion", `φ${lines.filter((line) => line.includes("●") || line.includes("⊘")).length}/${lines.length}`);
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
@@ -473,11 +475,12 @@ export default function piFusion(pi: ExtensionAPI): void {
         const updated = await showFusionPane(ctx, settings, (enabled) => {
           settings.enabled = enabled;
           persist();
-          if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", enabled ? undefined : "fusion off");
+          setFusionStatus(ctx, undefined);
         });
         if (updated) {
           settings = updated;
           persist();
+          setFusionStatus(ctx, undefined);
         }
         ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
         return;
@@ -526,6 +529,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       }
 
       persist();
+      setFusionStatus(ctx, undefined);
       ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
     },
   });
@@ -536,7 +540,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     if (typeof presetFlag === "string" && presetFlag.trim()) {
       await loadPresetByName(ctx, presetFlag.trim());
     }
-    if (!settings.enabled && ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion off");
+    setFusionStatus(ctx, undefined);
   });
 
   async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<string | undefined> {
@@ -576,7 +580,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           "LLM Fusion discovery",
           cancelFusion,
         );
-        if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion: discovery");
+        if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "φ…");
         activePanel?.update(0, { status: "running" });
         const discoveryResult = await runWorker({
           prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
@@ -694,6 +698,9 @@ export default function piFusion(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (event, ctx) => {
     if (!armedForNextTurn) return;
     armedForNextTurn = false;
+    consumeNextTurnFusion(settings);
+    persist();
+    if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "φ…");
     const bundle = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
     if (!bundle) return;
     return { systemPrompt: `${event.systemPrompt}\n\n${bundle}` };

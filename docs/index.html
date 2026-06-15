@@ -14,6 +14,10 @@
     />
     <meta name="author" content="François Leblanc" />
     <link rel="canonical" href="https://leblancfg.com/pi-fusion/" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://leblancfg.com/pi-fusion/" />
@@ -52,6 +56,7 @@
         --faint: #6b7280;
         --accent: #a78bfa;
         --accent-ink: #0b0d12;
+        --font-display: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         --radius: 12px;
       }
 
@@ -95,6 +100,7 @@
 
       .eyebrow {
         margin: 0;
+        font-family: var(--font-display);
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.14em;
@@ -103,6 +109,7 @@
       }
 
       h1 {
+        font-family: var(--font-display);
         font-size: clamp(40px, 6vw, 64px);
         font-weight: 700;
         line-height: 1.02;
@@ -192,6 +199,7 @@
 
       .section-label {
         margin: 72px 0 16px;
+        font-family: var(--font-display);
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.14em;
