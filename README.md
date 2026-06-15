@@ -65,6 +65,7 @@ Coding agents often make the first plausible plan they see. That is fine for cho
 The bet is simple: not all reasoning has to happen as one long serial chain inside the most expensive model. Some of it can run in parallel across slightly cheaper or dumber models, then get compressed into a single final turn. OpenAI's [o1 write-up](https://openai.com/index/learning-to-reason-with-llms/) made the test-time-compute axis feel obvious: give a model more thinking budget and it can do better. The compound-systems literature asks the neighboring question: what if some of that budget is more calls, more samples, or more agents instead of one longer hidden chain?
 
 A few useful breadcrumbs:
+
 - Berkeley BAIR's ["The Shift from Models to Compound AI Systems"](https://bair.berkeley.edu/blog/2024/02/18/compound-ai-systems/) defines compound AI systems as systems that use multiple interacting components: model calls, retrievers, tools, or control logic.
 - Chen et al., ["Are More LLM Calls All You Need?"](https://arxiv.org/abs/2403.02419), studies scaling laws for compound inference systems that aggregate multiple LM calls.
 - Snell et al., ["Scaling LLM Test-Time Compute Optimally"](https://arxiv.org/abs/2408.03314), frames inference-time compute as its own scaling axis.

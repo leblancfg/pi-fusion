@@ -18,6 +18,12 @@
     "parallel-agents"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "extensions/pi-fusion"
+  ],
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "test": "tsx --test tests/*.test.ts",
