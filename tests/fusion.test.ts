@@ -140,6 +140,29 @@ describe("settings", () => {
     assert.equal(resolveWorkerThinking(settings, 0, "off"), "high");
     assert.equal(resolveWorkerThinking(settings, 1, "off"), "medium");
   });
+
+  it("applies presets and lets individual flags override them", () => {
+    // Basic fast preset application
+    const fast = resolveSettings({ "fusion-preset": "fast" });
+    assert.equal(fast.preset, "fast");
+    assert.equal(fast.workerCount, 2);
+    assert.equal(fast.discoveryThinking, "off");
+    assert.equal(fast.workerThinking, "off");
+    assert.equal(fast.synthesizerThinking, "minimal");
+    assert.equal(fast.discoveryModel, "google-vertex/gemini-3.5-flash");
+    assert.equal(fast.workerModel, "google-vertex/gemini-3.5-flash");
+
+    // Override preset with individual flags
+    const override = resolveSettings({
+      "fusion-preset": "fast",
+      "fusion-workers": "4",
+      "fusion-worker-thinking": "medium",
+    });
+    assert.equal(override.preset, "fast");
+    assert.equal(override.workerCount, 4);
+    assert.equal(override.discoveryThinking, "off");
+    assert.equal(override.workerThinking, "medium");
+  });
 });
 
 describe("bypass", () => {
