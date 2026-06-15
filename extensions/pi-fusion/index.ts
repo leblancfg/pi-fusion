@@ -418,7 +418,7 @@ export default function piFusion(pi: ExtensionAPI): void {
       ctx.ui.setWidget("pi-fusion", undefined);
       return;
     }
-    ctx.ui.setStatus("pi-fusion", `∪${lines.filter((line) => line.includes("●") || line.includes("⊘")).length}/${lines.length}`);
+    ctx.ui.setStatus("pi-fusion", fusionStatusGlyph(settings.enabled));
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
@@ -580,7 +580,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           "LLM Fusion discovery",
           cancelFusion,
         );
-        if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "∪…");
+        setFusionStatus(ctx, undefined);
         activePanel?.update(0, { status: "running" });
         const discoveryResult = await runWorker({
           prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
@@ -700,7 +700,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     armedForNextTurn = false;
     consumeNextTurnFusion(settings);
     persist();
-    if (ctx.hasUI) ctx.ui.setStatus("pi-fusion", "∪…");
+    setFusionStatus(ctx, undefined);
     const bundle = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
     if (!bundle) return;
     return { systemPrompt: `${event.systemPrompt}\n\n${bundle}` };
