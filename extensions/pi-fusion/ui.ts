@@ -94,6 +94,9 @@ function padToWidth(text: string, width: number): string {
   return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
 }
 
+const SETTINGS_PANE_WIDTH = 96;
+const SETTINGS_PANE_MAX_HEIGHT = 22;
+
 class FusionPane {
   private selected = 0;
   private readonly rows = ["enabled", "presets", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
@@ -151,7 +154,7 @@ class FusionPane {
   }
 
   render(width: number): string[] {
-    const paneWidth = Math.max(2, Math.min(width, 78));
+    const paneWidth = Math.max(2, width);
     const innerWidth = Math.max(1, paneWidth - 2);
     const th = this.theme;
     const border = (text: string) => th.fg("border", text);
@@ -165,7 +168,7 @@ class FusionPane {
       ? formatModelReasoning(this.settings.discoveryModel, this.settings.discoveryThinking)
       : th.fg("muted", "off");
     const rows = [
-      this.renderSettingRow("enabled", "Enabled", this.settings.enabled ? th.fg("success", "on") : th.fg("muted", "off"), "space (applies now)"),
+      this.renderSettingRow("enabled", "Next turn", this.settings.enabled ? th.fg("success", "armed") : th.fg("muted", "off"), "space arm/disarm"),
       this.renderSettingRow("presets", "Presets", presetValue, "enter load/save/delete"),
       this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
       this.renderSettingRow("discovery", "Discovery", discoveryValue, "space on/off • enter model • ←/→ effort"),
@@ -274,7 +277,7 @@ class FusionWorkersPane {
   }
 
   render(width: number): string[] {
-    const paneWidth = Math.max(2, Math.min(width, 78));
+    const paneWidth = Math.max(2, width);
     const innerWidth = Math.max(1, paneWidth - 2);
     const th = this.theme;
     const border = (text: string) => th.fg("border", text);
@@ -550,7 +553,7 @@ async function configureWorkers(ctx: ExtensionContext, draft: FusionSettings, ch
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 18, margin: 2 },
+        overlayOptions: { anchor: "center", width: SETTINGS_PANE_WIDTH, maxHeight: SETTINGS_PANE_MAX_HEIGHT, margin: 2 },
       },
     );
 
@@ -603,7 +606,7 @@ export async function showFusionPane(
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "center", width: 78, maxHeight: 18, margin: 2 },
+        overlayOptions: { anchor: "center", width: SETTINGS_PANE_WIDTH, maxHeight: SETTINGS_PANE_MAX_HEIGHT, margin: 2 },
       },
     );
 

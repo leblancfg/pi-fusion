@@ -111,7 +111,7 @@ The rows are intentionally boring:
 
 | Row            | What it changes                                                |
 | -------------- | -------------------------------------------------------------- |
-| Enabled        | Turns fusion on or off for normal user prompts.                |
+| Next turn      | Arms fusion for the next eligible user prompt, then turns off. |
 | Presets        | Saves the current pane settings, loads saved ones, or deletes. |
 | Workers        | Sets worker count and opens per-worker model settings.         |
 | Discovery      | Picks the context-loading model and reasoning effort.          |
@@ -120,6 +120,8 @@ The rows are intentionally boring:
 | Save and close | Persists settings in the pi session.                           |
 
 Presets are user-defined snapshots of the settings pane. There are no built-in `fast`, `deep`, or `budget` profiles because those would go stale and hide assumptions. Save your own from `/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.json`; project presets live in `.pi/fusion.json` and override global presets with the same name. See [docs/presets.md](docs/presets.md) for the full format and examples.
+
+The status bar always shows a two-character indicator: `φ○` means fusion is off, `φ●` means the next eligible turn is armed, `φ…` means the planning fanout is starting, and `φN/M` shows worker progress.
 
 CLI flags exist for repeatable starts:
 
@@ -141,7 +143,7 @@ current, off, minimal, low, medium, high, xhigh
 ```text
 /fusion                 # open floating settings pane
 /fusion status
-/fusion on
+/fusion on              # arm fusion for the next eligible user prompt
 /fusion off
 /fusion preset list
 /fusion preset save cheap-planners
@@ -185,11 +187,11 @@ pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-Fusion is off by default. Use `--fusion-enabled` to start with it on; `--fusion-disabled` forces it off. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at startup.
+Fusion is off by default. Use `--fusion-enabled` to start with the next eligible turn armed; `--fusion-disabled` forces it off. After a fused turn starts, pi-fusion automatically disarms itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at startup.
 
 ## What gets sent where
 
-When fusion is enabled, each idle, non-command user input:
+When fusion is armed, the next idle, non-command user input consumes that arm and:
 
 - opens a live discovery pane in TUI mode;
 - runs query rewriting in parallel with discovery;
@@ -202,7 +204,7 @@ When fusion is enabled, each idle, non-command user input:
 - asks workers for concise planning markdown;
 - inserts the final planning bundle into the actor turn's system prompt via `before_agent_start`.
 
-The user's message stays untouched in the session. `/tree` and `/fork` still show the original prompt, and the planning bundle does not accumulate across turns.
+The user's message stays untouched in the session. `/tree` and `/fork` still show the original prompt, and the planning bundle does not accumulate across turns. Fusion then returns to off automatically, so the following prompt runs normally unless you arm it again.
 
 ## Bypasses
 
@@ -213,7 +215,7 @@ Fusion is skipped for:
 - extension-injected input;
 - steering or follow-up messages queued while the agent is running;
 - prompts that are already fusion actor prompts;
-- any turn where fusion is off.
+- any turn where fusion is off/disarmed.
 
 These skips keep the extension predictable and avoid recursion.
 

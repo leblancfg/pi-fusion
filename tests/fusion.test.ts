@@ -7,7 +7,9 @@ import {
   buildRewritePrompt,
   buildWorkerPrompt,
   collectRecentConversation,
+  consumeNextTurnFusion,
   formatToolEvent,
+  fusionStatusGlyph,
   getWorkerLens,
   normalizeWorkerSlots,
   parsePromptVariations,
@@ -108,8 +110,8 @@ describe("settings", () => {
     assert.equal(resolveSettings({}, { rewriteEnabled: false }).rewriteEnabled, false);
   });
 
-  it("lets persisted enabled override the startup flags", () => {
-    assert.equal(resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 }).enabled, true);
+  it("lets persisted enabled override startup enable while explicit disable still wins", () => {
+    assert.equal(resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 }).enabled, false);
     assert.equal(resolveSettings({ "fusion-enabled": true }, { enabled: false }).enabled, false);
     assert.equal(resolveSettings({}, { workerCount: 2 }).workerCount, 2);
   });
@@ -122,6 +124,18 @@ describe("settings", () => {
 
     assert.equal(normalizeWorkerSlots([{ model: "a", thinking: "low" }], 0).length, 1);
     assert.equal(normalizeWorkerSlots(undefined, 4).length, 4);
+  });
+
+  it("consumes enabled state after the next fused turn is armed", () => {
+    const settings = resolveSettings({}, { enabled: true });
+    assert.equal(consumeNextTurnFusion(settings), true);
+    assert.equal(settings.enabled, false);
+    assert.equal(consumeNextTurnFusion(settings), false);
+  });
+
+  it("formats a compact matching status glyph pair", () => {
+    assert.equal(fusionStatusGlyph(false), "φ○");
+    assert.equal(fusionStatusGlyph(true), "φ●");
   });
 
   it("resolves per-worker model/thinking with global then current fallbacks", () => {

@@ -4,7 +4,7 @@ Presets are named snapshots of the `/fusion` settings pane. They exist so you ca
 
 A preset can capture:
 
-- whether fusion is enabled;
+- whether fusion is armed for the next eligible turn;
 - discovery and rewrite toggles;
 - worker count;
 - default worker model and reasoning effort;
@@ -100,6 +100,7 @@ The file is intentionally plain JSON:
 
 Notes:
 
+- `enabled: true` arms fusion for one eligible turn when the preset is loaded. After the fused turn starts, pi-fusion writes the state back to off.
 - Missing fields inherit pi-fusion defaults.
 - Use `null`, `"current"`, or omit a model field to use the active pi session model.
 - Valid reasoning values are `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`. Omit a reasoning field to use the current session setting.
