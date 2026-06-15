@@ -19,12 +19,12 @@ import {
   resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
-  applyPreset,
   type FusionFlags,
   type FusionSettings,
   type PersistedFusionSettings,
   type WorkerResult,
 } from "./fusion.ts";
+import { applyFusionPresetSettings, findFusionPreset, loadFusionPresets, saveFusionPreset } from "./presets.ts";
 import { showFusionPane, startFusionLivePanel, type FusionLivePanelController, type FusionLiveWorkerState } from "./ui.ts";
 
 interface JsonMessage {
@@ -420,6 +420,48 @@ export default function piFusion(pi: ExtensionAPI): void {
     ctx.ui.setWidget("pi-fusion", lines);
   }
 
+  async function loadPresetByName(ctx: ExtensionContext, name: string): Promise<boolean> {
+    const presets = await loadFusionPresets(ctx.cwd);
+    const preset = findFusionPreset(presets, name);
+    if (!preset) {
+      const available = presets.map((item) => item.name).join(", ") || "(none saved)";
+      ctx.ui.notify(`Unknown fusion preset "${name}". Available: ${available}`, "error");
+      return false;
+    }
+    settings = applyFusionPresetSettings(settings, preset.name, preset);
+    ctx.ui.notify(`Loaded fusion preset "${preset.name}"`, "info");
+    return true;
+  }
+
+  async function handlePresetCommand(value: string, ctx: ExtensionContext): Promise<boolean> {
+    const [subcommand, ...rest] = value.trim().split(/\s+/).filter(Boolean);
+    const name = rest.join(" ").trim();
+
+    if (!subcommand || subcommand === "list") {
+      const presets = await loadFusionPresets(ctx.cwd);
+      if (presets.length === 0) {
+        ctx.ui.notify("No fusion presets saved yet. Open /fusion → Presets → Save current settings.", "info");
+      } else {
+        ctx.ui.notify(`Fusion presets: ${presets.map((preset) => `${preset.name} (${preset.scope})`).join(", ")}`, "info");
+      }
+      return true;
+    }
+
+    if (subcommand === "save" || subcommand === "save-global" || subcommand === "save-project") {
+      if (!name) {
+        ctx.ui.notify("Usage: /fusion preset save NAME", "error");
+        return false;
+      }
+      const scope = subcommand === "save-project" ? "project" : "global";
+      const savedPath = await saveFusionPreset(ctx.cwd, name, settings, scope);
+      settings.preset = name;
+      ctx.ui.notify(`Saved fusion preset "${name}" to ${savedPath}`, "info");
+      return true;
+    }
+
+    return loadPresetByName(ctx, [subcommand, ...rest].join(" "));
+  }
+
   pi.registerCommand("fusion", {
     description: "Open/configure LLM Fusion (UI, models, workers)",
     handler: async (args, ctx) => {
@@ -473,16 +515,11 @@ export default function piFusion(pi: ExtensionAPI): void {
       ) {
         settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
       } else if (command === "preset") {
-        const norm = value.toLowerCase().trim();
-        if (norm === "fast" || norm === "deep" || norm === "budget") {
-          applyPreset(settings, norm);
-        } else {
-          ctx.ui.notify("Usage: /fusion preset [fast|deep|budget]", "error");
-          return;
-        }
+        const ok = await handlePresetCommand(value, ctx);
+        if (!ok) return;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|preset fast|deep|budget|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -495,6 +532,10 @@ export default function piFusion(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     settings = settingsFromFlags(pi, readPersistedSettings(ctx));
+    const presetFlag = pi.getFlag("fusion-preset");
+    if (typeof presetFlag === "string" && presetFlag.trim()) {
+      await loadPresetByName(ctx, presetFlag.trim());
+    }
     if (!settings.enabled && ctx.hasUI) ctx.ui.setStatus("pi-fusion", "fusion off");
   });
 

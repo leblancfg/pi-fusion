@@ -109,14 +109,16 @@ export function parsePositiveInteger(value: boolean | string | number | undefine
   return Math.max(options.min, Math.min(options.max, parsed));
 }
 
-function normalizeModelSpec(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
+function normalizeModelSpec(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
   if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
   return trimmed;
 }
 
-export function normalizeThinkingChoice(value: string | undefined): FusionThinkingLevel | undefined {
-  const trimmed = value?.trim();
+export function normalizeThinkingChoice(value: unknown): FusionThinkingLevel | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
   if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
   return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current" ? (trimmed as FusionThinkingLevel) : undefined;
 }
@@ -141,49 +143,12 @@ export function resolveWorkerThinking(
   return settings.workers[index]?.thinking ?? settings.workerThinking ?? fallback;
 }
 
-export function applyPreset(settings: FusionSettings, preset: string): void {
-  const norm = preset.toLowerCase().trim();
-  if (norm === "fast") {
-    settings.preset = "fast";
-    settings.workerCount = 2;
-    settings.discoveryThinking = "off";
-    settings.workerThinking = "off";
-    settings.synthesizerThinking = "minimal";
-    settings.discoveryModel = "google-vertex/gemini-3.5-flash";
-    settings.workerModel = "google-vertex/gemini-3.5-flash";
-  } else if (norm === "deep") {
-    settings.preset = "deep";
-    settings.workerCount = 4;
-    settings.discoveryThinking = "medium";
-    settings.workerThinking = "medium";
-    settings.synthesizerThinking = "high";
-    settings.discoveryModel = undefined;
-    settings.workerModel = undefined;
-    settings.synthesizerModel = undefined;
-  } else if (norm === "budget") {
-    settings.preset = "budget";
-    settings.workerCount = 2;
-    settings.discoveryThinking = "off";
-    settings.workerThinking = "off";
-    settings.synthesizerThinking = "off";
-    settings.discoveryModel = "google-vertex/gemini-3.5-flash";
-    settings.workerModel = "google-vertex/gemini-3.5-flash";
-    settings.synthesizerModel = "google-vertex/gemini-3.5-flash";
-  }
-}
-
 export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
   const persistedWithoutLegacy = persisted ? { ...persisted } : undefined;
   delete persistedWithoutLegacy?.model;
 
   const settings = { ...DEFAULT_SETTINGS, ...persistedWithoutLegacy };
   settings.workerModel = settings.workerModel ?? normalizeModelSpec(persisted?.model);
-
-  // Apply preset first (either from persisted state or flag) so individual flags/overrides can take precedence
-  const presetValue = typeof flags["fusion-preset"] === "string" && flags["fusion-preset"].trim() ? flags["fusion-preset"] : settings.preset;
-  if (presetValue) {
-    applyPreset(settings, presetValue);
-  }
 
   // Opt-in by default: fusion is off unless enabled via --fusion-enabled, a
   // persisted /fusion on, or the settings pane. --fusion-disabled forces off.

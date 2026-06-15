@@ -107,15 +107,19 @@ Open the settings pane:
 /fusion
 ```
 
-The five rows are intentionally boring:
+The rows are intentionally boring:
 
-| Row            | What it changes                                        |
-| -------------- | ------------------------------------------------------ |
-| Enabled        | Turns fusion on or off for normal user prompts.        |
-| Workers        | Sets worker count and opens per-worker model settings. |
-| Discovery      | Picks the context-loading model and reasoning effort.  |
-| Synthesizer    | Picks the actor model and reasoning effort.            |
-| Save and close | Persists settings in the pi session.                   |
+| Row            | What it changes                                                |
+| -------------- | -------------------------------------------------------------- |
+| Enabled        | Turns fusion on or off for normal user prompts.                |
+| Presets        | Saves the current pane settings, loads saved ones, or deletes. |
+| Workers        | Sets worker count and opens per-worker model settings.         |
+| Discovery      | Picks the context-loading model and reasoning effort.          |
+| Rewrite        | Toggles prompt rewriting before worker fanout.                 |
+| Synthesizer    | Picks the actor model and reasoning effort.                    |
+| Save and close | Persists settings in the pi session.                           |
+
+Presets are user-defined snapshots of the settings pane. There are no built-in `fast`, `deep`, or `budget` profiles because those would go stale and hide assumptions. Save your own from `/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.json`; project presets live in `.pi/fusion.json` and override global presets with the same name. See [docs/presets.md](docs/presets.md) for the full format and examples.
 
 CLI flags exist for repeatable starts:
 
@@ -139,6 +143,10 @@ current, off, minimal, low, medium, high, xhigh
 /fusion status
 /fusion on
 /fusion off
+/fusion preset list
+/fusion preset save cheap-planners
+/fusion preset save-project repo-review
+/fusion preset cheap-planners
 /fusion workers 4
 /fusion discovery-model anthropic/claude-haiku-4-5
 /fusion discovery-model current
@@ -164,6 +172,7 @@ current, off, minimal, low, medium, high, xhigh
 ```bash
 pi --fusion-enabled
 pi --fusion-disabled
+pi --fusion-preset cheap-planners
 pi --fusion-workers 3
 pi --fusion-discovery-model anthropic/claude-haiku-4-5
 pi --fusion-discovery-thinking low
@@ -176,7 +185,7 @@ pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
 ```
 
-Fusion is off by default. Use `--fusion-enabled` to start with it on; `--fusion-disabled` forces it off. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`.
+Fusion is off by default. Use `--fusion-enabled` to start with it on; `--fusion-disabled` forces it off. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at startup.
 
 ## What gets sent where
 
