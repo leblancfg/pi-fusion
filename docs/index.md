@@ -7,7 +7,7 @@ description: pi-fusion is a compound AI planning fanout for pi: parallel read-on
 ---
 
 <div class="install" aria-label="Installation command">
-  <pre><code>pi install git:github.com/leblancfg/pi-fusion</code></pre>
+  <pre><code>pi install npm:@leblancfg/pi-fusion</code></pre>
 </div>
 
 <figure class="diagram">
