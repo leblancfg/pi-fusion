@@ -33,6 +33,8 @@ Open pi and turn it on from the settings pane:
 
 **pi-fusion adds a planning fanout to pi.** Before the normal actor turn starts, it runs one read-only discovery agent, rewrites your prompt into complementary angles, fans out to a few read-only planner workers, then injects their notes into the actor's system prompt for that turn.
 
+That synthesis step matters. A recurring result in the multi-call and multi-agent literature is that combining independent model responses can outscore the individual frontier models on many benchmarks. Not because the system is magic; because independent passes fail differently, and a final actor can reuse the useful disagreement instead of betting everything on one path through the problem.
+
 The practical version: spend a little latency to buy fewer blind spots before the agent edits your repo. I built it as a test harness, not a grand theory of agency. It is useful when the problem is fuzzy enough that one model path may miss something.
 
 N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and judge behind one API route. pi-fusion is similar. It runs local read-only pi subprocesses against your working tree, and hands their notes to the actor model you already chose. You control all configuration of how this happens.
@@ -64,11 +66,11 @@ The bet is simple: not all reasoning has to happen as one long serial chain insi
 
 A few useful breadcrumbs:
 
+- ["Frontier Large Language Models Rival State-of-the-Art Planners"](https://arxiv.org/html/2511.09378v2) shows current frontier models can compete with, and in some cases beat, classical planner baselines on fresh International Planning Competition-style tasks.
 - Berkeley BAIR's ["The Shift from Models to Compound AI Systems"](https://bair.berkeley.edu/blog/2024/02/18/compound-ai-systems/) defines compound AI systems as systems that use multiple interacting components: model calls, retrievers, tools, or control logic.
 - Chen et al., ["Are More LLM Calls All You Need?"](https://arxiv.org/abs/2403.02419), studies scaling laws for compound inference systems that aggregate multiple LM calls.
 - Snell et al., ["Scaling LLM Test-Time Compute Optimally"](https://arxiv.org/abs/2408.03314), frames inference-time compute as its own scaling axis.
 - Brown et al., ["Large Language Monkeys"](https://arxiv.org/abs/2407.21787), shows repeated sampling can amplify weaker models, sometimes cost-effectively.
-- Qi et al., ["Learning to Reason Across Parallel Samples"](https://arxiv.org/abs/2506.09014), studies aggregation across multiple sampled reasoning paths.
 - Wang et al., ["Mixture-of-Agents"](https://arxiv.org/abs/2406.04692), shows multiple LLM agents can improve final answer quality when their outputs are aggregated.
 
 My own evals point in the same direction for a subset of coding tasks: parallel planner calls can be cheaper, faster wall-clock, and better than sending everything straight to the biggest model. Not always. The whole point of this repo is to make that claim easy to test instead of treating it like a vibes-based architectural diagram.
