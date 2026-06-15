@@ -1,5 +1,4 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   fuzzyFilter,
@@ -94,8 +93,49 @@ function padToWidth(text: string, width: number): string {
   return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
 }
 
+function boxTop(theme: Theme, title: string, innerWidth: number): string {
+  const border = (text: string) => theme.fg("border", text);
+  const rawTitle = title.trim() ? ` ${title.trim()} ` : "";
+  const shownTitle = truncateToWidth(rawTitle, innerWidth, "", true);
+  const titleWidth = visibleWidth(shownTitle);
+  const left = "─".repeat(Math.max(0, Math.floor((innerWidth - titleWidth) / 2)));
+  const right = "─".repeat(Math.max(0, innerWidth - titleWidth - left.length));
+  return border(`╭${left}`) + (shownTitle ? theme.fg("accent", theme.bold(shownTitle)) : "") + border(`${right}╮`);
+}
+
+function boxRow(theme: Theme, content: string, innerWidth: number): string {
+  const border = (text: string) => theme.fg("border", text);
+  return border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
+}
+
+function boxDivider(theme: Theme, innerWidth: number): string {
+  return theme.fg("border", `├${"─".repeat(innerWidth)}┤`);
+}
+
+function boxBottom(theme: Theme, innerWidth: number): string {
+  return theme.fg("border", `╰${"─".repeat(innerWidth)}╯`);
+}
+
+function renderBox(theme: Theme, title: string, body: string[], width: number): string[] {
+  const paneWidth = Math.max(2, width);
+  const innerWidth = Math.max(1, paneWidth - 2);
+  return [boxTop(theme, title, innerWidth), ...body.map((line) => boxRow(theme, line, innerWidth)), boxBottom(theme, innerWidth)];
+}
+
+function centerLines(lines: string[], width: number): string[] {
+  return lines.map((line) => {
+    const lineWidth = visibleWidth(line);
+    if (lineWidth >= width) return truncateToWidth(line, width, "", true);
+    const left = Math.floor((width - lineWidth) / 2);
+    const right = width - lineWidth - left;
+    return `${" ".repeat(left)}${line}${" ".repeat(right)}`;
+  });
+}
+
 const SETTINGS_PANE_WIDTH = 96;
 const SETTINGS_PANE_MAX_HEIGHT = 22;
+const PICKER_PANE_WIDTH = 112;
+const PICKER_PANE_MAX_HEIGHT = 26;
 
 class FusionPane {
   private selected = 0;
@@ -154,12 +194,7 @@ class FusionPane {
   }
 
   render(width: number): string[] {
-    const paneWidth = Math.max(2, width);
-    const innerWidth = Math.max(1, paneWidth - 2);
     const th = this.theme;
-    const border = (text: string) => th.fg("border", text);
-    const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
-
     const workersValue = `${this.settings.workerCount}  ${th.fg("dim", "·")}  ${th.fg("accent", "configure ▸")}`;
     const presetValue = this.settings.preset
       ? `${this.settings.preset}  ${th.fg("dim", "·")}  ${th.fg("accent", "manage ▸")}`
@@ -182,20 +217,18 @@ class FusionPane {
       this.renderSettingRow("save", "Save and close", th.fg("accent", "enter"), "esc cancel"),
     ];
 
-    const title = truncateToWidth(" LLM Fusion ", innerWidth, "", true);
-    const titleWidth = visibleWidth(title);
-    const left = "─".repeat(Math.max(0, Math.floor((innerWidth - titleWidth) / 2)));
-    const right = "─".repeat(Math.max(0, innerWidth - titleWidth - left.length));
-
-    return [
-      border(`╭${left}`) + th.fg("accent", th.bold(title)) + border(`${right}╮`),
-      row(` ${th.fg("dim", "parallel read-only workers → one synthesizer/actor")}`),
-      row(""),
-      ...rows.map((content) => row(content)),
-      row(""),
-      row(` ${th.fg("dim", "↑↓ move • ←/→ adjust • Enter select • Esc cancel")}`),
-      border(`╰${"─".repeat(innerWidth)}╯`),
-    ];
+    return renderBox(
+      this.theme,
+      "LLM Fusion",
+      [
+        ` ${th.fg("dim", "parallel read-only workers → one synthesizer/actor")}`,
+        "",
+        ...rows,
+        "",
+        ` ${th.fg("dim", "↑↓ move • ←/→ adjust • Enter select • Esc cancel")}`,
+      ],
+      width,
+    );
   }
 
   invalidate(): void {}
@@ -277,12 +310,7 @@ class FusionWorkersPane {
   }
 
   render(width: number): string[] {
-    const paneWidth = Math.max(2, width);
-    const innerWidth = Math.max(1, paneWidth - 2);
     const th = this.theme;
-    const border = (text: string) => th.fg("border", text);
-    const row = (content: string) => border("│") + padToWidth(truncateToWidth(content, innerWidth, "…", true), innerWidth) + border("│");
-
     const lines = [
       this.renderRow(0, "All workers", formatModelReasoning(this.settings.workerModel, this.settings.workerThinking)),
       ...this.settings.workers.map((worker, index) =>
@@ -290,20 +318,18 @@ class FusionWorkersPane {
       ),
     ];
 
-    const title = truncateToWidth(" Configure workers ", innerWidth, "", true);
-    const titleWidth = visibleWidth(title);
-    const left = "─".repeat(Math.max(0, Math.floor((innerWidth - titleWidth) / 2)));
-    const right = "─".repeat(Math.max(0, innerWidth - titleWidth - left.length));
-
-    return [
-      border(`╭${left}`) + th.fg("accent", th.bold(title)) + border(`${right}╮`),
-      row(` ${th.fg("dim", "per-worker model + reasoning; #N inherits 'All workers'")}`),
-      row(""),
-      ...lines.map((content) => row(content)),
-      row(""),
-      row(` ${th.fg("dim", "↑↓ move • ←/→ effort • Enter pick model • Esc back")}`),
-      border(`╰${"─".repeat(innerWidth)}╯`),
-    ];
+    return renderBox(
+      this.theme,
+      "Configure workers",
+      [
+        ` ${th.fg("dim", "per-worker model + reasoning; #N inherits 'All workers'")}`,
+        "",
+        ...lines,
+        "",
+        ` ${th.fg("dim", "↑↓ move • ←/→ effort • Enter pick model • Esc back")}`,
+      ],
+      width,
+    );
   }
 
   invalidate(): void {}
@@ -353,19 +379,15 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
 
       const container = new Container();
       const searchText = new Text("", 1, 0);
-      const accentBorder = () => new DynamicBorder((text: string) => theme.fg("accent", text));
       const renderSearch = () => {
         const shown = query.length > 0 ? theme.fg("text", query) : theme.fg("dim", "(type to filter)");
         searchText.setText(`${theme.fg("accent", "›")} ${shown}${theme.fg("accent", "▌")}`);
       };
       const rebuild = () => {
         container.clear();
-        container.addChild(accentBorder());
-        container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
         container.addChild(searchText);
         container.addChild(list);
         container.addChild(new Text(theme.fg("dim", "type to fuzzy-filter • ↑↓ navigate • enter select • esc back"), 1, 0));
-        container.addChild(accentBorder());
       };
       renderSearch();
       rebuild();
@@ -379,7 +401,9 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
 
       return {
         render(width: number) {
-          return container.render(width);
+          const paneWidth = Math.max(2, width);
+          const innerWidth = Math.max(1, paneWidth - 2);
+          return renderBox(theme, title, container.render(innerWidth), paneWidth);
         },
         invalidate() {
           container.invalidate();
@@ -413,7 +437,7 @@ async function pickModel(ctx: ExtensionContext, title: string, currentSpec: stri
     },
     {
       overlay: true,
-      overlayOptions: { anchor: "center", width: "75%", minWidth: 60, maxHeight: "80%", margin: 2 },
+      overlayOptions: { anchor: "center", width: PICKER_PANE_WIDTH, maxHeight: PICKER_PANE_MAX_HEIGHT, margin: 2 },
     },
   );
 }
@@ -466,16 +490,15 @@ async function showFusionPresetManager(ctx: ExtensionContext, draft: FusionSetti
       list.onCancel = () => done(null);
 
       const container = new Container();
-      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-      container.addChild(new Text(theme.fg("accent", theme.bold("Fusion presets")), 1, 0));
       container.addChild(new Text(theme.fg("dim", "Saved settings snapshots. Project presets override global presets with the same name."), 1, 0));
       container.addChild(list);
       container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
-      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
 
       return {
         render(width: number) {
-          return container.render(width);
+          const paneWidth = Math.max(2, width);
+          const innerWidth = Math.max(1, paneWidth - 2);
+          return renderBox(theme, "Fusion presets", container.render(innerWidth), paneWidth);
         },
         invalidate() {
           container.invalidate();
@@ -488,7 +511,7 @@ async function showFusionPresetManager(ctx: ExtensionContext, draft: FusionSetti
     },
     {
       overlay: true,
-      overlayOptions: { anchor: "center", width: "82%", minWidth: 72, maxHeight: "80%", margin: 2 },
+      overlayOptions: { anchor: "center", width: PICKER_PANE_WIDTH, maxHeight: PICKER_PANE_MAX_HEIGHT, margin: 2 },
     },
   );
 
@@ -795,21 +818,19 @@ class FusionLivePanel {
   render(width: number): string[] {
     const panelWidth = Math.max(20, Math.min(width, 160));
     const innerWidth = Math.max(1, panelWidth - 2);
-    const border = (text: string) => this.theme.fg("border", text);
     const count = Math.max(1, this.workers.length);
     const naturalCol = Math.floor((innerWidth - (count - 1)) / count);
     const focus = this.effectiveFocus(count, naturalCol);
 
     const lines = [
-      border(`╭${"─".repeat(innerWidth)}╮`),
-      this.wrapLine(this.headerText(), innerWidth, border),
-      this.wrapLine(this.controlsLine(focus), innerWidth, border),
-      border(`├${"─".repeat(innerWidth)}┤`),
+      boxTop(this.theme, this.headerTitle(), innerWidth),
+      boxRow(this.theme, this.controlsLine(focus), innerWidth),
+      boxDivider(this.theme, innerWidth),
     ];
 
     if (focus === null) {
       const colWidths = splitWidths(Math.max(count, innerWidth - (count - 1)), count);
-      const separator = border("│");
+      const separator = this.theme.fg("border", "│");
       const workerLines = this.workers.map((worker, index) =>
         this.renderWorker(worker, colWidths[index] ?? 1, { showPrompt: this.showPrompts, reasoningLines: 4, outputLines: 8 }),
       );
@@ -819,15 +840,15 @@ class FusionLivePanel {
           const colWidth = colWidths[index] ?? 1;
           return padToWidth(truncateToWidth(workerCells[i] ?? "", colWidth, "…", true), colWidth);
         });
-        lines.push(border("│") + cells.join(separator) + border("│"));
+        lines.push(boxRow(this.theme, cells.join(separator), innerWidth));
       }
     } else {
       const body = this.renderWorker(this.workers[focus], innerWidth, { showPrompt: this.showPrompts, reasoningLines: 8, outputLines: 18 });
-      for (const line of body) lines.push(this.wrapLine(line, innerWidth, border));
+      for (const line of body) lines.push(boxRow(this.theme, line, innerWidth));
     }
 
-    lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
-    return lines;
+    lines.push(boxBottom(this.theme, innerWidth));
+    return centerLines(lines, width);
   }
 
   private effectiveFocus(count: number, naturalCol: number): number | null {
@@ -836,15 +857,11 @@ class FusionLivePanel {
     return null;
   }
 
-  private wrapLine(line: string, innerWidth: number, border: (text: string) => string): string {
-    return border("│") + padToWidth(truncateToWidth(line, innerWidth, "…", true), innerWidth) + border("│");
-  }
-
-  private headerText(): string {
+  private headerTitle(): string {
     const total = this.workers.length;
-    if (total <= 1) return this.theme.fg("accent", this.theme.bold(` ${this.title} `));
+    if (total <= 1) return this.title;
     const doneCount = this.workers.filter((worker) => worker.status === "done" || worker.status === "failed" || worker.status === "timed-out").length;
-    return this.theme.fg("accent", this.theme.bold(` ${this.title} ${doneCount}/${total} `));
+    return `${this.title} ${doneCount}/${total}`;
   }
 
   private hasPrompts(): boolean {
