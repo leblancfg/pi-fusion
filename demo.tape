@@ -1,56 +1,26 @@
-# VHS Tape Script for pi-fusion
-# Generate the demo GIF by running: vhs demo.tape
+# Generate with: vhs demo.tape
 
 Output docs/assets/demo.gif
 
-Set Shell "bash"
+Set Shell "zsh"
 Set FontSize 14
 Set FontFamily "JetBrains Mono"
 Set Width 1200
-Set Height 620
+Set Height 700
 Set Theme "Catppuccin Macchiato"
 
-# Start the pi session
-Type "pi"
+Type "pi -e ./extensions/pi-fusion/index.ts"
 Enter
-Sleep 2s
-
-# Configure a cheap-planner profile without relying on a saved preset
-Type "/fusion workers 3"
-Enter
-Sleep 1s
-
-Type "/fusion worker-model google-vertex/gemini-3.5-flash"
-Enter
-Sleep 1s
-
-Type "/fusion worker-thinking off"
-Enter
-Sleep 1s
+Sleep 8s
 
 Type "/fusion on"
 Enter
 Sleep 1s
 
-# Trigger a fused turn with a complex problem
-Type "Find the signature verification bypass bug in webhook.py"
+Type "You are a make-believe reporter for the magazine 'World's Sloppiest Code'. Find the ugliest, dumbest, wtf-iest single line of code in pi-coding-agent (https://github.com/earendil-works/pi/tree/main/packages/coding-agent), and write up a short article explaining and roasting it."
 Enter
 
-# Let the parallel workers stream and complete their planning phase
-Sleep 12s
+Sleep 60s
 
-# Focus first worker column
-Type "1"
-Sleep 2s
-
-# Focus second worker column
-Type "2"
-Sleep 2s
-
-# Return to split view
-Type "0"
-Sleep 2s
-
-# Exit
 Ctrl+D
 Sleep 1s
