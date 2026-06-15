@@ -19,6 +19,7 @@ import {
   resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
+  applyPreset,
   type FusionFlags,
   type FusionSettings,
   type PersistedFusionSettings,
@@ -277,6 +278,7 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-discovery-thinking": pi.getFlag("fusion-discovery-thinking"),
     "fusion-worker-thinking": pi.getFlag("fusion-worker-thinking"),
     "fusion-synthesizer-thinking": pi.getFlag("fusion-synthesizer-thinking"),
+    "fusion-preset": pi.getFlag("fusion-preset"),
   };
   return resolveSettings(flags, persisted);
 }
@@ -296,6 +298,7 @@ function settingsSummary(settings: FusionSettings): string {
     `workerThinking=${settings.workerThinking ?? "current"}`,
     `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
     `synthesizerThinking=${settings.synthesizerThinking ?? "current"}`,
+    `preset=${settings.preset ?? "none"}`,
   ].join(" ");
 }
 
@@ -396,6 +399,11 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
+  pi.registerFlag("fusion-preset", {
+    description: "Apply a pre-configured fusion configuration profile: fast, deep, budget",
+    type: "string",
+    default: "",
+  });
 
   function persist(): void {
     pi.appendEntry("pi-fusion-settings", settings);
@@ -464,9 +472,17 @@ export default function piFusion(pi: ExtensionAPI): void {
         command === "synth-reasoning"
       ) {
         settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
+      } else if (command === "preset") {
+        const norm = value.toLowerCase().trim();
+        if (norm === "fast" || norm === "deep" || norm === "budget") {
+          applyPreset(settings, norm);
+        } else {
+          ctx.ui.notify("Usage: /fusion preset [fast|deep|budget]", "error");
+          return;
+        }
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|preset fast|deep|budget|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;

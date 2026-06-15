@@ -25,6 +25,7 @@ export interface FusionSettings {
   discoveryThinking: FusionThinkingLevel | undefined;
   workerThinking: FusionThinkingLevel | undefined;
   synthesizerThinking: FusionThinkingLevel | undefined;
+  preset?: string;
 }
 
 export interface PersistedFusionSettings extends Partial<FusionSettings> {
@@ -47,6 +48,7 @@ export interface FusionFlags {
   "fusion-discovery-thinking"?: boolean | string;
   "fusion-worker-thinking"?: boolean | string;
   "fusion-synthesizer-thinking"?: boolean | string;
+  "fusion-preset"?: boolean | string;
 }
 
 export interface WorkerLens {
@@ -97,6 +99,7 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   discoveryThinking: undefined,
   workerThinking: undefined,
   synthesizerThinking: undefined,
+  preset: undefined,
 };
 
 export function parsePositiveInteger(value: boolean | string | number | undefined, fallback: number, options: { min: number; max: number }): number {
@@ -138,19 +141,61 @@ export function resolveWorkerThinking(
   return settings.workers[index]?.thinking ?? settings.workerThinking ?? fallback;
 }
 
+export function applyPreset(settings: FusionSettings, preset: string): void {
+  const norm = preset.toLowerCase().trim();
+  if (norm === "fast") {
+    settings.preset = "fast";
+    settings.workerCount = 2;
+    settings.discoveryThinking = "off";
+    settings.workerThinking = "off";
+    settings.synthesizerThinking = "minimal";
+    settings.discoveryModel = "google-vertex/gemini-3.5-flash";
+    settings.workerModel = "google-vertex/gemini-3.5-flash";
+  } else if (norm === "deep") {
+    settings.preset = "deep";
+    settings.workerCount = 4;
+    settings.discoveryThinking = "medium";
+    settings.workerThinking = "medium";
+    settings.synthesizerThinking = "high";
+    settings.discoveryModel = undefined;
+    settings.workerModel = undefined;
+    settings.synthesizerModel = undefined;
+  } else if (norm === "budget") {
+    settings.preset = "budget";
+    settings.workerCount = 2;
+    settings.discoveryThinking = "off";
+    settings.workerThinking = "off";
+    settings.synthesizerThinking = "off";
+    settings.discoveryModel = "google-vertex/gemini-3.5-flash";
+    settings.workerModel = "google-vertex/gemini-3.5-flash";
+    settings.synthesizerModel = "google-vertex/gemini-3.5-flash";
+  }
+}
+
 export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFusionSettings): FusionSettings {
   const persistedWithoutLegacy = persisted ? { ...persisted } : undefined;
   delete persistedWithoutLegacy?.model;
 
   const settings = { ...DEFAULT_SETTINGS, ...persistedWithoutLegacy };
   settings.workerModel = settings.workerModel ?? normalizeModelSpec(persisted?.model);
+
+  // Apply preset first (either from persisted state or flag) so individual flags/overrides can take precedence
+  const presetValue = typeof flags["fusion-preset"] === "string" && flags["fusion-preset"].trim() ? flags["fusion-preset"] : settings.preset;
+  if (presetValue) {
+    applyPreset(settings, presetValue);
+  }
+
   // Opt-in by default: fusion is off unless enabled via --fusion-enabled, a
   // persisted /fusion on, or the settings pane. --fusion-disabled forces off.
   settings.enabled = persisted?.enabled ?? (flags["fusion-enabled"] === true && flags["fusion-disabled"] !== true);
   // Discovery and rewrite are on by default; --fusion-no-discovery/--fusion-no-rewrite turn them off.
   settings.discoveryEnabled = persisted?.discoveryEnabled ?? flags["fusion-no-discovery"] !== true;
   settings.rewriteEnabled = persisted?.rewriteEnabled ?? flags["fusion-no-rewrite"] !== true;
-  settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
+  if (flags["fusion-workers"] !== undefined) {
+    settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
+  } else {
+    settings.workerCount = parsePositiveInteger(String(settings.workerCount), settings.workerCount, { min: 1, max: 8 });
+  }
   settings.workerOutputBytes = parsePositiveInteger(flags["fusion-output-bytes"], settings.workerOutputBytes, {
     min: 1_000,
     max: 64_000,
