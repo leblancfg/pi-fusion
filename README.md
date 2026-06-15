@@ -121,7 +121,7 @@ The rows are intentionally boring:
 
 Presets are user-defined snapshots of the settings pane. There are no built-in `fast`, `deep`, or `budget` profiles because those would go stale and hide assumptions. Save your own from `/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.json`; project presets live in `.pi/fusion.json` and override global presets with the same name. See [docs/presets.md](docs/presets.md) for the full format and examples.
 
-The status bar always shows a two-character indicator: `φ○` means fusion is off, `φ●` means the next eligible turn is armed, `φ…` means the planning fanout is starting, and `φN/M` shows worker progress.
+The status bar uses a compact union marker: `∪̸` means fusion is off, `∪` means the next eligible turn is armed, `∪…` means the planning fanout is starting, and `∪N/M` shows worker progress.
 
 CLI flags exist for repeatable starts:
 

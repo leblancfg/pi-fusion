@@ -134,8 +134,8 @@ describe("settings", () => {
   });
 
   it("formats a compact matching status glyph pair", () => {
-    assert.equal(fusionStatusGlyph(false), "φ○");
-    assert.equal(fusionStatusGlyph(true), "φ●");
+    assert.equal(fusionStatusGlyph(false), "∪\u0338");
+    assert.equal(fusionStatusGlyph(true), "∪");
   });
 
   it("resolves per-worker model/thinking with global then current fallbacks", () => {
