@@ -1,9 +1,9 @@
 ---
 layout: default
-title: Presets
-heading: pi-fusion presets
-lead: Save and load named snapshots of the fusion settings pane without relying on baked-in model assumptions.
-description: pi-fusion preset documentation, including global and project-local JSON files, slash commands, startup flags, and examples.
+title: Presets & Prompts
+heading: pi-fusion presets & prompts
+lead: Save and load settings snapshots or customize all underlying agent prompts.
+description: pi-fusion documentation for presets and prompt customization, including JSON file structures, templates, and placeholders.
 permalink: /presets/
 ---
 
@@ -29,7 +29,7 @@ pi-fusion reads two JSON files:
 | Global  | `~/.pi/agent/fusion.json` | Personal presets you want in every repo.               |
 | Project | `.pi/fusion.json`         | Repo-specific presets you want to keep with a project. |
 
-Project presets override global presets with the same name. This mirrors pi's own preset-extension pattern: global defaults first, project-specific settings second.
+Project presets override global presets with the same name. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. This mirrors pi's own preset-extension pattern: global defaults first, project-specific settings second.
 
 pi-fusion does **not** write to `~/.pi/agent/settings.json`. That file is for pi's main settings and package list. A separate `fusion.json` keeps extension-specific data isolated and easier to delete or share.
 
@@ -176,7 +176,7 @@ Each worker slot inherits `workerModel` and `workerThinking` unless it has an ex
 
 ### My preset does not show up
 
-Check that the JSON file has a top-level `presets` object and valid JSON syntax. Project presets must be at `.pi/fusion.json` from the repository root you launched pi in.
+Check that the JSON file has a top-level `presets` object and valid JSON syntax. Malformed `fusion.json` files are ignored instead of crashing the extension. Project presets live at `.pi/fusion.json`; pi-fusion searches upward from the directory where pi is running.
 
 ### I saved a preset but loading it does not change models
 
@@ -189,3 +189,92 @@ Use `/fusion preset save-project NAME`. Commit `.pi/fusion.json` if the team sho
 ### I want to remove all fusion presets
 
 Delete `~/.pi/agent/fusion.json` and any project `.pi/fusion.json` files. The extension will recreate files only when you save a preset again.
+
+---
+
+## Prompt Customization
+
+You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.json` file. You can see and edit them there, or override them on a per-project basis.
+
+### Where prompts are stored
+
+`pi-fusion` reads prompts from two locations:
+
+| Scope   | Path                      | Use it for                                          |
+| ------- | ------------------------- | --------------------------------------------------- |
+| Global  | `~/.pi/agent/fusion.json` | Default templates used across all projects.         |
+| Project | `.pi/fusion.json`         | Project-specific templates to share with your team. |
+
+Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `actor` templates.
+
+### JSON format
+
+Add a `"prompts"` section at the top level of your `fusion.json`:
+
+```json
+{
+  "version": 1,
+  "prompts": {
+    "discovery": "...",
+    "rewrite": "...",
+    "worker": "...",
+    "actor": "..."
+  },
+  "presets": {
+    "cheap-planners": {
+      "description": "Fast worker fanout, current model as actor",
+      "settings": {
+        ...
+      }
+    }
+  }
+}
+```
+
+### Available Prompts & Placeholders
+
+Each prompt supports simple `{{placeholder}}` templating. You can rearrange, rewrite, or completely re-format the instruction text, as long as you preserve the template tags you want to substitute.
+
+#### 1. Discovery Prompt (`prompts.discovery`)
+
+This prompt guides the read-only discovery agent to explore your codebase.
+
+- **Placeholders:**
+  - `{{cwd}}`: Working directory of your project.
+  - `{{task}}`: Your original prompt.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 2. Prompt Rewrite (`prompts.rewrite`)
+
+This prompt is used to ask the rewrite model to generate worker prompts.
+
+- **Placeholders:**
+  - `{{workerCount}}`: The number of parallel workers.
+  - `{{task}}`: Your original prompt.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 3. Worker Prompt (`prompts.worker`)
+
+This prompt runs on each parallel read-only worker.
+
+- **Placeholders:**
+  - `{{cwd}}`: Working directory of your project.
+  - `{{task}}`: Your original prompt.
+  - `{{assignedPrompt}}`: The rewritten prompt variation generated for this worker.
+  - `{{discoveryContext}}`: Context loaded and handed off by the discovery agent.
+  - `{{workerName}}`: Slot index/name (e.g. `#1`, `#2`).
+  - `{{discoveryGuidance}}`: Pre-formatted guidance on how to use the discovery context.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 4. Actor/Synthesizer Prompt (`prompts.actor`)
+
+This prompt formats the final planning bundle injected into the main actor's turn.
+
+- **Placeholders:**
+  - `{{task}}`: Your original prompt.
+  - `{{discoveryContext}}`: Context loaded by the discovery agent.
+  - `{{variations}}`: List of worker prompt variations.
+  - `{{workerOutputs}}`: Outputs and plans produced by each worker.
+  - `{{imageNote}}`: A note telling the actor that workers did not see attached images (if any).
+
+> 💡 **Important:** The actor prompt template should contain `<!-- pi-fusion:actor-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom actor prompt omits it, pi-fusion prepends the marker defensively.

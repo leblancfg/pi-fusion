@@ -170,6 +170,14 @@ Presets are user-defined snapshots of the settings pane. There are no built-in `
 The status bar uses a compact union marker: `∪̸` means fusion is off, and `∪` means the next eligible
 turn is armed.
 
+For local development, load the TypeScript entrypoint directly:
+
+```bash
+pi -e ./extensions/pi-fusion/index.ts
+```
+
+The published package uses the `pi.extensions` field in `package.json`; there is no separate `index.json` manifest.
+
 CLI flags exist for repeatable starts:
 
 ```bash
@@ -184,6 +192,93 @@ Use `current` or omit a model flag to keep the main session model. Reasoning val
 ```text
 current, off, minimal, low, medium, high, xhigh
 ```
+
+## Prompt Customization
+
+You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.json` file (`~/.pi/agent/fusion.json`). You can see and edit them there, or override them on a per-project basis.
+
+### Where prompts are stored
+
+`pi-fusion` reads prompts from two locations:
+
+| Scope   | Path                      | Use it for                                          |
+| ------- | ------------------------- | --------------------------------------------------- |
+| Global  | `~/.pi/agent/fusion.json` | Default templates used across all projects.         |
+| Project | `.pi/fusion.json`         | Project-specific templates to share with your team. |
+
+Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `actor` templates.
+
+### JSON format
+
+Add a `"prompts"` section at the top level of your `fusion.json`:
+
+```json
+{
+  "version": 1,
+  "prompts": {
+    "discovery": "...",
+    "rewrite": "...",
+    "worker": "...",
+    "actor": "..."
+  },
+  "presets": {
+    "cheap-planners": {
+      "description": "Fast worker fanout, current model as actor",
+      "settings": {
+        ...
+      }
+    }
+  }
+}
+```
+
+### Available Prompts & Placeholders
+
+Each prompt supports simple `{{placeholder}}` templating. You can rearrange, rewrite, or completely re-format the instruction text, as long as you preserve the template tags you want to substitute.
+
+#### 1. Discovery Prompt (`prompts.discovery`)
+
+This prompt guides the read-only discovery agent to explore your codebase.
+
+- **Placeholders:**
+  - `{{cwd}}`: Working directory of your project.
+  - `{{task}}`: Your original prompt.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 2. Prompt Rewrite (`prompts.rewrite`)
+
+This prompt is used to ask the rewrite model to generate worker prompts.
+
+- **Placeholders:**
+  - `{{workerCount}}`: The number of parallel workers.
+  - `{{task}}`: Your original prompt.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 3. Worker Prompt (`prompts.worker`)
+
+This prompt runs on each parallel read-only worker.
+
+- **Placeholders:**
+  - `{{cwd}}`: Working directory of your project.
+  - `{{task}}`: Your original prompt.
+  - `{{assignedPrompt}}`: The rewritten prompt variation generated for this worker.
+  - `{{discoveryContext}}`: Context loaded and handed off by the discovery agent.
+  - `{{workerName}}`: Slot index/name (e.g. `#1`, `#2`).
+  - `{{discoveryGuidance}}`: Pre-formatted guidance on how to use the discovery context.
+  - `{{recentContext}}`: Pre-formatted recent conversation history.
+
+#### 4. Actor/Synthesizer Prompt (`prompts.actor`)
+
+This prompt formats the final planning bundle injected into the main actor's turn.
+
+- **Placeholders:**
+  - `{{task}}`: Your original prompt.
+  - `{{discoveryContext}}`: Context loaded by the discovery agent.
+  - `{{variations}}`: List of worker prompt variations.
+  - `{{workerOutputs}}`: Outputs and plans produced by each worker.
+  - `{{imageNote}}`: A note telling the actor that workers did not see attached images (if any).
+
+> 💡 **Important:** The actor prompt template should contain `<!-- pi-fusion:actor-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom actor prompt omits it, pi-fusion prepends the marker defensively.
 
 ## Commands
 
@@ -294,6 +389,7 @@ planning bundle lives in the per-turn system prompt and is regenerated each fuse
   that UI.
 - Print, JSON, and RPC modes intentionally get no progress output. stdout is the consumed payload in
   those modes.
+- Malformed `fusion.json` files are ignored instead of crashing the extension; fix the JSON syntax if presets or prompts are missing unexpectedly.
 - Some providers hide reasoning streams, so a worker column may show no reasoning even with
   reasoning enabled.
 - Discovery and worker tool access is narrow by design: no `bash`, no `write`, no `edit`.

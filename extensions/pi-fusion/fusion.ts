@@ -429,20 +429,25 @@ export function formatToolEvent(toolName: string, args: unknown, home?: string):
   }
 }
 
-export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string }): string {
-  const contextSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
+export interface FusionPrompts {
+  discovery: string;
+  rewrite: string;
+  worker: string;
+  actor: string;
+}
 
-  return `You are the discovery agent in an LLM Fusion pipeline.
+export const DEFAULT_PROMPTS: FusionPrompts = {
+  discovery: `You are the discovery agent in an LLM Fusion pipeline.
 
 Your only job is to load context for the rest of the team. Spend read/search/list tool calls to surface the files, symbols, APIs, commands, and snippets that look relevant to the request, so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
 
 This is a mechanical gathering step, not an analysis step. Do not answer the user's request, solve the problem, plan an implementation, assess or rank relevance, judge quality, or make any recommendation. Do not offer opinions or conclusions of any kind — they would bias the workers. Do not edit files. When you have gathered the context, stop.
 
-Working directory: ${input.cwd}
+Working directory: {{cwd}}
 
-${contextSection}## User request to gather context for
+{{recentContext}}## User request to gather context for
 
-${input.task.trim()}
+{{task}}
 
 ## Output contract
 
@@ -451,25 +456,99 @@ Return a context handoff in markdown with:
 1. **Context loaded** — the files, symbols, APIs, commands, snippets, and search results you inspected, with concrete paths/line ranges and a neutral one-line note of what each contains (not why it matters or whether it is useful).
 2. **Gaps** — relevant context you could not load, if any.
 
-State facts only. Include enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`;
-}
+State facts only. Include enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`,
 
-export function buildRewritePrompt(input: { task: string; recentContext: string; workerCount: number }): string {
-  const contextSection = input.recentContext.trim()
-    ? `## Recent conversation context (truncated)\n\n${truncateUtf8(input.recentContext.trim(), 8_000)}\n\n`
-    : "";
-
-  return `Rewrite the user's request into ${input.workerCount} complementary exploration prompts for parallel planning workers.
+  rewrite: `Rewrite the user's request into {{workerCount}} complementary exploration prompts for parallel planning workers.
 
 This is query rewriting, similar to RAG query expansion. The rewrites should explore the idea space from different useful angles without assigning named personas. Keep them specific and grounded in the original request and the recent context.
 
 ## User request
 
-${input.task.trim()}
+{{task}}
 
-${contextSection}## Output contract
+{{recentContext}}## Output contract
 
-Return only a JSON array of ${input.workerCount} strings. No markdown, no explanation.`;
+Return only a JSON array of {{workerCount}} strings. No markdown, no explanation.`,
+
+  worker: `{{discoveryContext}}You are worker {{workerName}} in an LLM Fusion planning pass.
+
+Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. {{discoveryGuidance}}
+
+Working directory: {{cwd}}
+
+{{recentContext}}## Original user request
+
+{{task}}
+
+## Assigned rewritten exploration prompt
+
+{{assignedPrompt}}
+
+## Output contract
+
+Return concise markdown with these sections:
+
+1. **Understanding** — what this exploration prompt means for the original request.
+2. **Additional context** — only new files, symbols, patterns, or commands beyond discovery.
+3. **Plan** — concrete steps for the actor.
+4. **Risks and verification** — edge cases, tests, or manual checks.
+
+Keep the result useful for a downstream actor. Do not implement anything.`,
+
+  actor: `<!-- pi-fusion:actor-prompt -->
+{{discoveryContext}}# LLM Fusion planning bundle
+
+A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.{{imageNote}}
+
+## Original user request
+
+{{task}}{{variations}}
+
+## Worker outputs
+
+{{workerOutputs}}
+
+## Actor instructions
+
+- Act on the original request, not on the workers' wording.
+- Use shared discovery context before re-reading files; avoid redundant tool calls unless verification or missing context requires them.
+- Use the workers to reduce blind spots, but verify before editing or running risky commands.
+- Keep your visible response natural; do not dump a long meta-synthesis unless the user asked for one.
+- If worker plans disagree, choose the smallest safe path and mention the tradeoff only if useful.`,
+};
+
+export function renderTemplate(template: string, variables: Record<string, string | number>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    const escapedKey = key.replace(/[-\\^$*+?.()|[\]{}]/g, "\\$&");
+    const regex = new RegExp(`{{\\s*${escapedKey}\\s*}}`, "g");
+    result = result.replace(regex, String(value));
+  }
+  return result;
+}
+
+export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string; template?: string }): string {
+  const templateStr = input.template ?? DEFAULT_PROMPTS.discovery;
+  const contextSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
+
+  return renderTemplate(templateStr, {
+    cwd: input.cwd,
+    recentContext: contextSection,
+    task: input.task.trim(),
+  });
+}
+
+export function buildRewritePrompt(input: { task: string; recentContext: string; workerCount: number; template?: string }): string {
+  const templateStr = input.template ?? DEFAULT_PROMPTS.rewrite;
+  const contextSection = input.recentContext.trim()
+    ? `## Recent conversation context (truncated)\n\n${truncateUtf8(input.recentContext.trim(), 8_000)}\n\n`
+    : "";
+
+  return renderTemplate(templateStr, {
+    workerCount: input.workerCount,
+    task: input.task.trim(),
+    recentContext: contextSection,
+  });
 }
 
 export function parsePromptVariations(output: string, workerCount: number, fallbackTask: string): string[] {
@@ -506,37 +585,24 @@ export function buildWorkerPrompt(input: {
   discoveryContext: string;
   cwd: string;
   lens: WorkerLens;
+  template?: string;
 }): string {
+  const templateStr = input.template ?? DEFAULT_PROMPTS.worker;
   const discoverySection = input.discoveryContext.trim() ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n` : "";
   const recentSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
   const discoveryGuidance = input.discoveryContext.trim()
     ? "The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present."
     : "Investigate with read/search tools as needed before planning.";
 
-  return `${discoverySection}You are worker ${input.lens.name} in an LLM Fusion planning pass.
-
-Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. ${discoveryGuidance}
-
-Working directory: ${input.cwd}
-
-${recentSection}## Original user request
-
-${input.task.trim()}
-
-## Assigned rewritten exploration prompt
-
-${input.assignedPrompt.trim()}
-
-## Output contract
-
-Return concise markdown with these sections:
-
-1. **Understanding** — what this exploration prompt means for the original request.
-2. **Additional context** — only new files, symbols, patterns, or commands beyond discovery.
-3. **Plan** — concrete steps for the actor.
-4. **Risks and verification** — edge cases, tests, or manual checks.
-
-Keep the result useful for a downstream actor. Do not implement anything.`;
+  return renderTemplate(templateStr, {
+    discoveryContext: discoverySection,
+    workerName: input.lens.name,
+    discoveryGuidance,
+    cwd: input.cwd,
+    recentContext: recentSection,
+    task: input.task.trim(),
+    assignedPrompt: input.assignedPrompt.trim(),
+  });
 }
 
 export function formatWorkerForActor(result: WorkerResult, maxBytes: number): string {
@@ -558,7 +624,9 @@ export function buildActorPrompt(input: {
   workerResults: WorkerResult[];
   workerOutputBytes: number;
   imageCount: number;
+  template?: string;
 }): string {
+  const templateStr = input.template ?? DEFAULT_PROMPTS.actor;
   const workers = input.workerResults.map((result) => formatWorkerForActor(result, input.workerOutputBytes)).join("\n\n---\n\n");
   const imageNote =
     input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
@@ -568,26 +636,14 @@ export function buildActorPrompt(input: {
       ? `\n\n## Worker prompt variations\n\n${input.promptVariations.map((variation, index) => `${index + 1}. ${variation}`).join("\n")}`
       : "";
 
-  return `${ACTOR_PROMPT_MARKER}
-${discovery}# LLM Fusion planning bundle
-
-A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.${imageNote}
-
-## Original user request
-
-${input.originalText.trim()}${variations}
-
-## Worker outputs
-
-${workers || "(no worker output)"}
-
-## Actor instructions
-
-- Act on the original request, not on the workers' wording.
-- Use shared discovery context before re-reading files; avoid redundant tool calls unless verification or missing context requires them.
-- Use the workers to reduce blind spots, but verify before editing or running risky commands.
-- Keep your visible response natural; do not dump a long meta-synthesis unless the user asked for one.
-- If worker plans disagree, choose the smallest safe path and mention the tradeoff only if useful.`;
+  const prompt = renderTemplate(templateStr, {
+    discoveryContext: discovery,
+    imageNote,
+    task: input.originalText.trim(),
+    variations,
+    workerOutputs: workers || "(no worker output)",
+  });
+  return prompt.includes(ACTOR_PROMPT_MARKER) ? prompt : `${ACTOR_PROMPT_MARKER}\n${prompt}`;
 }
 
 function getContentText(content: unknown): string {
