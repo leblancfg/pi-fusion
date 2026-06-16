@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { resolveSettings, type FusionSettings, type PersistedFusionSettings } from "./fusion.ts";
+import { resolveSettings, type FusionSettings, type PersistedFusionSettings, DEFAULT_PROMPTS, type FusionPrompts } from "./fusion.ts";
 
 export type FusionPresetScope = "global" | "project";
 
@@ -20,10 +20,28 @@ export interface LoadedFusionPreset extends FusionPresetRecord {
 interface FusionPresetFile {
   version?: number;
   presets?: Record<string, FusionPresetRecord | PersistedFusionSettings>;
+  prompts?: {
+    discovery?: string;
+    rewrite?: string;
+    worker?: string;
+    actor?: string;
+  };
+}
+
+function findProjectConfigRoot(cwd: string): string {
+  let current = path.resolve(cwd);
+
+  while (true) {
+    if (existsSync(path.join(current, ".pi", "fusion.json")) || existsSync(path.join(current, ".git"))) return current;
+
+    const parent = path.dirname(current);
+    if (parent === current) return path.resolve(cwd);
+    current = parent;
+  }
 }
 
 export function fusionPresetPath(cwd: string, scope: FusionPresetScope): string {
-  return scope === "global" ? path.join(getAgentDir(), "fusion.json") : path.join(cwd, ".pi", "fusion.json");
+  return scope === "global" ? path.join(getAgentDir(), "fusion.json") : path.join(findProjectConfigRoot(cwd), ".pi", "fusion.json");
 }
 
 export function snapshotFusionSettings(settings: FusionSettings): PersistedFusionSettings {
@@ -62,9 +80,13 @@ function coercePresetRecord(value: unknown): FusionPresetRecord | undefined {
 
 async function readPresetFile(filePath: string): Promise<FusionPresetFile> {
   if (!existsSync(filePath)) return { version: 1, presets: {} };
-  const raw = await fs.readFile(filePath, "utf8");
-  const parsed = JSON.parse(raw) as FusionPresetFile;
-  return { version: parsed.version ?? 1, presets: parsed.presets ?? {} };
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as FusionPresetFile;
+    return { version: parsed.version ?? 1, presets: parsed.presets ?? {}, prompts: parsed.prompts };
+  } catch {
+    return { version: 1, presets: {} };
+  }
 }
 
 export async function loadFusionPresets(cwd: string): Promise<LoadedFusionPreset[]> {
@@ -119,4 +141,36 @@ export async function deleteFusionPreset(cwd: string, name: string, scope: Fusio
 
 export function findFusionPreset(presets: LoadedFusionPreset[], name: string): LoadedFusionPreset | undefined {
   return presets.find((preset) => preset.name === name);
+}
+
+export async function loadFusionPrompts(cwd: string): Promise<FusionPrompts> {
+  const prompts = { ...DEFAULT_PROMPTS };
+
+  for (const scope of ["global", "project"] as const) {
+    const file = await readPresetFile(fusionPresetPath(cwd, scope));
+    prompts.discovery = file.prompts?.discovery ?? prompts.discovery;
+    prompts.rewrite = file.prompts?.rewrite ?? prompts.rewrite;
+    prompts.worker = file.prompts?.worker ?? prompts.worker;
+    prompts.actor = file.prompts?.actor ?? prompts.actor;
+  }
+
+  return prompts;
+}
+
+export async function initializeFusionPrompts(cwd: string): Promise<void> {
+  const globalPath = fusionPresetPath(cwd, "global");
+  try {
+    let file: FusionPresetFile = { version: 1, presets: {} };
+    if (existsSync(globalPath)) {
+      file = await readPresetFile(globalPath);
+    }
+
+    if (!file.prompts) {
+      file.prompts = { ...DEFAULT_PROMPTS };
+      await fs.mkdir(path.dirname(globalPath), { recursive: true });
+      await fs.writeFile(globalPath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+    }
+  } catch {
+    // Best-effort
+  }
 }

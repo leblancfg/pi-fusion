@@ -30,7 +30,14 @@ import {
   type PersistedFusionSettings,
   type WorkerResult,
 } from "./fusion.ts";
-import { applyFusionPresetSettings, findFusionPreset, loadFusionPresets, saveFusionPreset } from "./presets.ts";
+import {
+  applyFusionPresetSettings,
+  findFusionPreset,
+  loadFusionPresets,
+  saveFusionPreset,
+  loadFusionPrompts,
+  initializeFusionPrompts,
+} from "./presets.ts";
 import { showFusionPane, startFusionLivePanel, type FusionLivePanelController, type FusionLiveWorkerState } from "./ui.ts";
 
 interface JsonMessage {
@@ -557,6 +564,7 @@ export default function piFusion(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    await initializeFusionPrompts(ctx.cwd);
     settings = settingsFromFlags(pi, readPersistedSettings(ctx));
     const presetFlag = pi.getFlag("fusion-preset");
     if (typeof presetFlag === "string" && presetFlag.trim()) {
@@ -575,6 +583,7 @@ export default function piFusion(pi: ExtensionAPI): void {
   });
 
   async function runFusion(ctx: ExtensionContext, task: string, imageCount: number): Promise<FusionRunResult | undefined> {
+    const prompts = await loadFusionPrompts(ctx.cwd);
     const recentContext = collectRecentConversation(ctx.sessionManager.getBranch() as unknown[], settings.contextBytes);
     const currentModel = currentModelSpec(ctx);
     const workerModel = settings.workerModel ?? currentModel;
@@ -593,7 +602,12 @@ export default function piFusion(pi: ExtensionAPI): void {
     try {
       const rewritePromise = settings.rewriteEnabled
         ? runWorker({
-            prompt: buildRewritePrompt({ task, recentContext, workerCount: settings.workerCount }),
+            prompt: buildRewritePrompt({
+              task,
+              recentContext,
+              workerCount: settings.workerCount,
+              template: prompts.rewrite,
+            }),
             cwd: ctx.cwd,
             index: 0,
             lens: "rewrite",
@@ -616,7 +630,12 @@ export default function piFusion(pi: ExtensionAPI): void {
         setFusionStatus(ctx, undefined);
         activePanel?.update(0, { status: "running" });
         discoveryResult = await runWorker({
-          prompt: buildDiscoveryPrompt({ task, recentContext, cwd: ctx.cwd }),
+          prompt: buildDiscoveryPrompt({
+            task,
+            recentContext,
+            cwd: ctx.cwd,
+            template: prompts.discovery,
+          }),
           cwd: ctx.cwd,
           index: 0,
           lens: "discovery",
@@ -664,6 +683,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           discoveryContext,
           cwd: ctx.cwd,
           lens,
+          template: prompts.worker,
         });
         activePanel?.update(index, { status: "running" });
         const result = await runWorker({
@@ -703,6 +723,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           workerResults,
           workerOutputBytes: settings.workerOutputBytes,
           imageCount,
+          template: prompts.actor,
         }),
         traceMessage: buildFusionTraceMessage({
           task,

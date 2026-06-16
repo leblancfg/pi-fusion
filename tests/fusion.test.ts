@@ -276,6 +276,21 @@ describe("prompts", () => {
     assert.match(prompt, /pi-fusion truncated/);
     assert.ok(Buffer.byteLength(prompt, "utf8") < 2_000);
   });
+  it("preserves the fusion marker when actor prompts are customized", () => {
+    const prompt = buildActorPrompt({
+      originalText: "Implement feature",
+      discoveryContext: "",
+      promptVariations: [],
+      workerResults: [worker()],
+      workerOutputBytes: 100,
+      imageCount: 0,
+      template: "Custom actor prompt for {{task}}\n\n{{workerOutputs}}",
+    });
+
+    assert.match(prompt, new RegExp(ACTOR_PROMPT_MARKER));
+    assert.ok(prompt.indexOf(ACTOR_PROMPT_MARKER) < prompt.indexOf("Custom actor prompt"));
+  });
+
   it("asks the rewrite model for exactly the configured number of prompts", () => {
     const prompt = buildRewritePrompt({ task: "Add tests", recentContext: "", workerCount: 4 });
     assert.match(prompt, /into 4 complementary exploration prompts/);

@@ -96,11 +96,11 @@ function padToWidth(text: string, width: number): string {
 function boxTop(theme: Theme, title: string, innerWidth: number): string {
   const border = (text: string) => theme.fg("border", text);
   const rawTitle = title.trim() ? ` ${title.trim()} ` : "";
-  const shownTitle = truncateToWidth(rawTitle, innerWidth, "", true);
-  const titleWidth = visibleWidth(shownTitle);
-  const left = "─".repeat(Math.max(0, Math.floor((innerWidth - titleWidth) / 2)));
-  const right = "─".repeat(Math.max(0, innerWidth - titleWidth - left.length));
-  return border(`╭${left}`) + (shownTitle ? theme.fg("accent", theme.bold(shownTitle)) : "") + border(`${right}╮`);
+  const shownTitle = truncateToWidth(rawTitle, innerWidth - 2, "", false);
+  const styledTitle = shownTitle ? theme.fg("accent", theme.bold(shownTitle)) : "";
+  const usedWidth = 1 + visibleWidth(shownTitle); // left bar + title
+  const rightBars = "─".repeat(Math.max(0, innerWidth - usedWidth));
+  return border("╭─") + styledTitle + border(rightBars + "╮");
 }
 
 function boxRow(theme: Theme, content: string, innerWidth: number): string {
