@@ -11,7 +11,6 @@
   <a href="https://leblancfg.com/pi-fusion/"><img alt="docs" src="https://img.shields.io/badge/docs-github%20pages-2563eb?style=flat-square"></a>
 </p>
 
-
 ## How to install
 
 Install as a global pi package from npm:
@@ -69,7 +68,6 @@ flowchart LR
   A --> O[One final turn]
 ```
 
-
 ## Why this exists
 
 Coding agents often make the first plausible plan they see. That is fine for chores. It gets
@@ -107,7 +105,6 @@ cheaper, faster wall-clock, and better than sending everything straight to the b
 always. The whole point of this repo is to make that claim easy to test instead of treating it like
 a vibes-based architectural diagram.
 
-
 ## What you see
 
 In TUI mode, a fused turn shows a live pane:
@@ -126,8 +123,7 @@ Esc       cancel the fanout and fall back to a normal turn
 p         show or hide rewritten worker prompts
 ```
 
-And a little one-character status bar that marks whether the next turn is armed or not. 
-
+And a little one-character status bar that marks whether the next turn is armed or not.
 
 ## When to use it
 
@@ -143,8 +139,7 @@ Bad fit:
 - Tiny edits where startup latency costs more than the task.
 - Prompts with images. The actor can see them; discovery and workers currently cannot.
 - Fully non-interactive runs where you need progress output on stdout. `pi-fusion` stays quiet there
-  so it does not corrupt print/JSON output. 
-
+  so it does not corrupt print/JSON output.
 
 ## Configure it
 
@@ -190,7 +185,6 @@ Use `current` or omit a model flag to keep the main session model. Reasoning val
 current, off, minimal, low, medium, high, xhigh
 ```
 
-
 ## Commands
 
 ```text
@@ -222,7 +216,6 @@ current, off, minimal, low, medium, high, xhigh
 
 `/fusion model ...` is still accepted as an alias for `/fusion worker-model ...`.
 
-
 ## Startup flags
 
 ```bash
@@ -247,7 +240,6 @@ itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-w
 `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at
 startup.
 
-
 ## What gets sent where
 
 When fusion is armed, the next idle, non-command user input consumes that arm and:
@@ -267,7 +259,6 @@ The user's message stays untouched in the session. `/tree` and `/fork` still sho
 prompt, and the planning bundle does not accumulate across turns. Fusion then returns to off
 automatically, so the following prompt runs normally unless you arm it again.
 
-
 ## Bypasses
 
 Fusion is skipped for:
@@ -281,7 +272,6 @@ Fusion is skipped for:
 
 These skips keep the extension predictable and avoid recursion.
 
-
 ## Context budget
 
 Worker output inserted into the actor turn is capped per worker (`fusion-output-bytes`, default
@@ -291,7 +281,6 @@ shared downstream.
 
 Full worker transcripts are not stored separately. The session stores your original message; the
 planning bundle lives in the per-turn system prompt and is regenerated each fused turn.
-
 
 ## Rough edges
 
@@ -310,7 +299,6 @@ planning bundle lives in the per-turn system prompt and is regenerated each fuse
 - Discovery and worker tool access is narrow by design: no `bash`, no `write`, no `edit`.
 - The current pipeline uses two LLM round trips before the actor turn. A lighter mode may exist
   later, but the explicit flow is better for testing right now.
-
 
 ## Development
 
@@ -338,7 +326,6 @@ tests/        # node:test tests for fusion.ts
 scripts/      # smoke test
 ```
 
-
 ## Package shape
 
 This package is standalone. It declares one pi extension:
@@ -350,7 +337,6 @@ This package is standalone. It declares one pi extension:
   }
 }
 ```
-
 
 ## Links
 
