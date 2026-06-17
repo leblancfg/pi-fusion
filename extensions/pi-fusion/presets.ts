@@ -2,7 +2,14 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { resolveSettings, type FusionSettings, type PersistedFusionSettings, DEFAULT_PROMPTS, type FusionPrompts } from "./fusion.ts";
+import {
+  DEFAULT_PROMPTS,
+  DEFAULT_SETTINGS,
+  resolveSettings,
+  type FusionPrompts,
+  type FusionSettings,
+  type PersistedFusionSettings,
+} from "./fusion.ts";
 
 export type FusionPresetScope = "global" | "project";
 
@@ -60,11 +67,12 @@ export function snapshotFusionSettings(settings: FusionSettings): PersistedFusio
     discoveryThinking: settings.discoveryThinking,
     workerThinking: settings.workerThinking,
     synthesizerThinking: settings.synthesizerThinking,
+    plannerToolMode: settings.plannerToolMode,
   };
 }
 
 export function applyFusionPresetSettings(current: FusionSettings, name: string, preset: FusionPresetRecord): FusionSettings {
-  return resolveSettings({}, { ...current, ...preset.settings, preset: name });
+  return resolveSettings({}, { ...current, plannerToolMode: DEFAULT_SETTINGS.plannerToolMode, ...preset.settings, preset: name });
 }
 
 function coercePresetRecord(value: unknown): FusionPresetRecord | undefined {

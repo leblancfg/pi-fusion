@@ -19,7 +19,7 @@ const stub = {
 
 piFusion(stub);
 
-const requiredFlags = ["fusion-disabled", "fusion-workers", "fusion-worker-model", "fusion-synthesizer-model"];
+const requiredFlags = ["fusion-disabled", "fusion-workers", "fusion-worker-model", "fusion-synthesizer-model", "fusion-planner-tools"];
 const requiredCommands = ["fusion"];
 const requiredEvents = ["session_start", "input", "before_agent_start"];
 

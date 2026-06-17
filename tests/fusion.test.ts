@@ -113,6 +113,15 @@ describe("settings", () => {
     assert.equal(resolveSettings({}, { rewriteEnabled: false }).rewriteEnabled, false);
   });
 
+  it("defaults planner subprocesses to all tools with a read-only opt-out", () => {
+    assert.equal(resolveSettings({}).plannerToolMode, "all");
+    assert.equal(resolveSettings({ "fusion-planner-tools": "read-only" }).plannerToolMode, "read-only");
+    assert.equal(resolveSettings({ "fusion-planner-tools": "readonly" }).plannerToolMode, "read-only");
+    assert.equal(resolveSettings({ "fusion-planner-tools": "all" }, { plannerToolMode: "read-only" }).plannerToolMode, "all");
+    assert.equal(resolveSettings({ "fusion-planner-tools": "wat" }, { plannerToolMode: "read-only" }).plannerToolMode, "read-only");
+    assert.equal(resolveSettings({}, { plannerToolMode: "wat" as never }).plannerToolMode, "all");
+  });
+
   it("lets persisted enabled override startup enable while explicit disable still wins", () => {
     assert.equal(resolveSettings({ "fusion-disabled": true }, { enabled: true, workerCount: 2 }).enabled, false);
     assert.equal(resolveSettings({ "fusion-enabled": true }, { enabled: false }).enabled, false);
@@ -229,9 +238,19 @@ describe("prompts", () => {
       cwd: "/repo",
       lens: getWorkerLens(0),
     });
+    const readOnlyWithoutDiscovery = buildWorkerPrompt({
+      task: "Add tests",
+      assignedPrompt: "Explore API tests first",
+      recentContext: "",
+      discoveryContext: "",
+      cwd: "/repo",
+      lens: getWorkerLens(0),
+      plannerToolMode: "read-only",
+    });
     assert.match(withDiscovery, /shared discovery context above is loaded/i);
     assert.doesNotMatch(withoutDiscovery, /shared discovery context above is loaded/i);
-    assert.match(withoutDiscovery, /Investigate with read\/search tools/i);
+    assert.match(withoutDiscovery, /Investigate with available tools/i);
+    assert.match(readOnlyWithoutDiscovery, /Investigate with read\/search tools/i);
   });
 
   it("builds read-only numbered worker prompts with discovery context and assigned rewrite", () => {
@@ -243,11 +262,12 @@ describe("prompts", () => {
       discoveryContext: "Discovery context",
       cwd: "/repo",
       lens,
+      plannerToolMode: "read-only",
     });
 
     assert.equal(lens.name, "#1");
     assert.match(prompt, /read-only/);
-    assert.match(prompt, /do not modify files/);
+    assert.match(prompt, /do not modify files/i);
     assert.match(prompt, /Working directory: \/repo/);
     assert.match(prompt, /Earlier context/);
     assert.ok(prompt.indexOf("## Shared discovery context") < prompt.indexOf("You are worker #1"));

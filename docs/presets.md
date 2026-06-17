@@ -93,6 +93,7 @@ The file is intentionally plain JSON:
         "workerCount": 3,
         "workerModel": "google-vertex/gemini-3.5-flash",
         "workerThinking": "off",
+        "plannerToolMode": "all",
         "synthesizerModel": null,
         "synthesizerThinking": "current",
         "workerOutputBytes": 12000,
@@ -111,6 +112,7 @@ Notes:
 - Missing fields inherit pi-fusion defaults.
 - Use `null`, `"current"`, or omit a model field to use the active pi session model.
 - Valid reasoning values are `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`. Omit a reasoning field to use the current session setting.
+- `plannerToolMode` controls discovery and worker tool access. Use `all` for normal tool access or `read-only` for the original `read`/`grep`/`find`/`ls`-only mode. Missing fields backfill to `all`.
 - `workers` is optional. If present, each entry can override the default worker model or reasoning for a specific worker slot.
 
 ## Example: cheap planners, premium actor
@@ -132,6 +134,7 @@ This is the configuration I expect many people to try first:
         "discoveryThinking": "off",
         "workerModel": "google-vertex/gemini-3.5-flash",
         "workerThinking": "off",
+        "plannerToolMode": "all",
         "synthesizerModel": null,
         "synthesizerThinking": null,
         "workerOutputBytes": 12000,
@@ -237,12 +240,13 @@ Each prompt supports simple `{{placeholder}}` templating. You can rearrange, rew
 
 #### 1. Discovery Prompt (`prompts.discovery`)
 
-This prompt guides the read-only discovery agent to explore your codebase.
+This prompt guides the discovery agent to explore your codebase.
 
 - **Placeholders:**
   - `{{cwd}}`: Working directory of your project.
   - `{{task}}`: Your original prompt.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
+  - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
 
 #### 2. Prompt Rewrite (`prompts.rewrite`)
 
@@ -255,7 +259,7 @@ This prompt is used to ask the rewrite model to generate worker prompts.
 
 #### 3. Worker Prompt (`prompts.worker`)
 
-This prompt runs on each parallel read-only worker.
+This prompt runs on each parallel worker.
 
 - **Placeholders:**
   - `{{cwd}}`: Working directory of your project.
@@ -264,6 +268,7 @@ This prompt runs on each parallel read-only worker.
   - `{{discoveryContext}}`: Context loaded and handed off by the discovery agent.
   - `{{workerName}}`: Slot index/name (e.g. `#1`, `#2`).
   - `{{discoveryGuidance}}`: Pre-formatted guidance on how to use the discovery context.
+  - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
 
 #### 4. Actor/Synthesizer Prompt (`prompts.actor`)

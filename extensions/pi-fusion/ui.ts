@@ -10,7 +10,14 @@ import {
   type TUI,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import { normalizeWorkerSlots, THINKING_CHOICES, type FusionSettings, type FusionThinkingChoice, type FusionThinkingLevel } from "./fusion.ts";
+import {
+  normalizeWorkerSlots,
+  THINKING_CHOICES,
+  type FusionPlannerToolMode,
+  type FusionSettings,
+  type FusionThinkingChoice,
+  type FusionThinkingLevel,
+} from "./fusion.ts";
 import { applyFusionPresetSettings, deleteFusionPreset, loadFusionPresets, saveFusionPreset, type LoadedFusionPreset } from "./presets.ts";
 
 interface FusionPaneResult {
@@ -53,6 +60,10 @@ function cycleThinking(current: FusionThinkingLevel | undefined, delta: -1 | 1):
   const index = Math.max(0, THINKING_CHOICES.indexOf(choice));
   const next = THINKING_CHOICES[(index + delta + THINKING_CHOICES.length) % THINKING_CHOICES.length] ?? "current";
   return next === "current" ? undefined : next;
+}
+
+function togglePlannerToolMode(current: FusionPlannerToolMode): FusionPlannerToolMode {
+  return current === "all" ? "read-only" : "all";
 }
 
 function modelSpecFromModel(model: ReturnType<ExtensionContext["modelRegistry"]["getAll"]>[number]): string {
@@ -139,7 +150,7 @@ const PICKER_PANE_MAX_HEIGHT = 26;
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = ["enabled", "presets", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
+  private readonly rows = ["enabled", "tools", "presets", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
 
   constructor(
     private readonly theme: Theme,
@@ -179,6 +190,7 @@ class FusionPane {
     }
     if (matchesKey(data, "space")) {
       if (row === "enabled") this.toggleEnabled();
+      else if (row === "tools") this.settings.plannerToolMode = togglePlannerToolMode(this.settings.plannerToolMode);
       else if (row === "discovery") this.settings.discoveryEnabled = !this.settings.discoveryEnabled;
       else if (row === "rewrite") this.settings.rewriteEnabled = !this.settings.rewriteEnabled;
       return;
@@ -204,6 +216,12 @@ class FusionPane {
       : th.fg("muted", "off");
     const rows = [
       this.renderSettingRow("enabled", "Next turn", this.settings.enabled ? th.fg("success", "armed") : th.fg("muted", "off"), "space arm/disarm"),
+      this.renderSettingRow(
+        "tools",
+        "Agent tools",
+        this.settings.plannerToolMode === "all" ? th.fg("success", "all tools") : th.fg("muted", "read-only"),
+        "space all/read-only",
+      ),
       this.renderSettingRow("presets", "Presets", presetValue, "enter load/save/delete"),
       this.renderSettingRow("workers", "Workers", workersValue, "←/→ count • enter"),
       this.renderSettingRow("discovery", "Discovery", discoveryValue, "space on/off • enter model • ←/→ effort"),
@@ -221,7 +239,7 @@ class FusionPane {
       this.theme,
       "LLM Fusion",
       [
-        ` ${th.fg("dim", "parallel read-only workers → one synthesizer/actor")}`,
+        ` ${th.fg("dim", "parallel planning workers → one synthesizer/actor")}`,
         "",
         ...rows,
         "",
@@ -241,6 +259,8 @@ class FusionPane {
     } else if (row === "workers") {
       this.settings.workerCount = Math.max(1, Math.min(8, this.settings.workerCount + delta));
       this.settings.workers = normalizeWorkerSlots(this.settings.workers, this.settings.workerCount);
+    } else if (row === "tools") {
+      this.settings.plannerToolMode = togglePlannerToolMode(this.settings.plannerToolMode);
     } else if (row === "discovery") {
       this.settings.discoveryThinking = cycleThinking(this.settings.discoveryThinking, delta);
     } else if (row === "rewrite") {
