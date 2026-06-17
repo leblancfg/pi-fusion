@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="480" viewBox="0 0 1080 480" role="img" aria-labelledby="title desc">
   <title id="title">pi-fusion planning flow</title>
-  <desc id="desc">A prompt fans out to optional discovery and rewrite, then parallel workers, then one pi actor turn.</desc>
+  <desc id="desc">A prompt fans out to optional discovery and rewrite, then parallel workers, then one synthesis turn.</desc>
   <style>
     text { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
     .blockTitle { fill: #EEF3EA; font-weight: 700; }
-    .blockSub { fill: rgba(238,243,234,0.72); font-size: 13px; font-weight: 500; }
+    .blockSub { fill: rgba(238,243,234,0.72); font-size: 14px; font-weight: 500; }
     .outlineTitle { fill: #0E481F; font-weight: 700; }
-    .outlineSub { fill: #6E7268; font-size: 13px; font-weight: 500; }
+    .outlineSub { fill: #6E7268; font-size: 14px; font-weight: 500; }
     .pillText { fill: #16301F; font-size: 18px; font-weight: 600; }
     .edge { fill: none; stroke: #0E481F; stroke-width: 2.25; stroke-linecap: round; opacity: 0.9; }
     .edgeFaint { fill: none; stroke: #0E481F; stroke-width: 1.5; stroke-linecap: round; opacity: 0.32; }
@@ -15,48 +15,50 @@
   <rect width="1080" height="480" fill="#ECEBE6"/>
 
   <!-- prompt -> discovery / rewrite -->
-  <path class="edge" d="M540 96 C540 132, 250 132, 250 168"/>
-  <path class="edge" d="M540 96 C540 132, 830 132, 830 168"/>
+  <path class="edge" d="M540 96 C540 123, 398 123, 398 150"/>
+  <path class="edge" d="M540 96 C540 123, 682 123, 682 150"/>
   <!-- discovery / rewrite -> workers (faint fanout) -->
-  <path class="edgeFaint" d="M250 232 C250 266, 230 266, 230 300"/>
-  <path class="edgeFaint" d="M250 232 C250 266, 430 266, 430 300"/>
-  <path class="edgeFaint" d="M250 232 C250 266, 630 266, 630 300"/>
-  <path class="edgeFaint" d="M830 232 C830 266, 230 266, 230 300"/>
-  <path class="edgeFaint" d="M830 232 C830 266, 430 266, 430 300"/>
-  <path class="edgeFaint" d="M830 232 C830 266, 630 266, 630 300"/>
+  <path class="edgeFaint" d="M398 214 C398 255, 370 255, 370 296"/>
+  <path class="edgeFaint" d="M398 214 C398 255, 540 255, 540 296"/>
+  <path class="edgeFaint" d="M398 214 C398 255, 710 255, 710 296"/>
+  <path class="edgeFaint" d="M682 214 C682 255, 370 255, 370 296"/>
+  <path class="edgeFaint" d="M682 214 C682 255, 540 255, 540 296"/>
+  <path class="edgeFaint" d="M682 214 C682 255, 710 255, 710 296"/>
   <!-- workers -> synthesis -->
-  <path class="edge" d="M230 384 C230 416, 440 416, 440 416"/>
-  <path class="edge" d="M430 384 C430 416, 540 416, 540 416"/>
-  <path class="edge" d="M630 384 C630 416, 640 416, 640 416"/>
+  <path class="edge" d="M370 380 C370 398, 440 398, 440 416"/>
+  <path class="edge" d="M540 380 C540 398, 540 398, 540 416"/>
+  <path class="edge" d="M710 380 C710 398, 640 398, 640 416"/>
+  <!-- discovery -> synthesis (context passed straight through, routed around the workers) -->
+  <path class="edge" d="M320 214 C240 300, 240 386, 362 440"/>
 
   <!-- prompt pill -->
   <rect x="428" y="36" width="224" height="60" rx="30" fill="#E3E2DC" stroke="#C7C7C0" stroke-width="2"/>
   <text x="540" y="73" text-anchor="middle" class="pillText">Your prompt</text>
 
-  <!-- discovery (solid) -->
-  <rect x="120" y="168" width="260" height="64" rx="12" fill="#0E481F"/>
-  <text x="250" y="200" text-anchor="middle" class="blockTitle" font-size="22">Discovery</text>
-  <text x="250" y="220" text-anchor="middle" class="blockSub">optional · reads · greps · lists</text>
+  <!-- discovery (light green outline) -->
+  <rect x="268" y="150" width="260" height="64" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
+  <text x="398" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Discovery</text>
+  <text x="398" y="202" text-anchor="middle" class="outlineSub">loads context once</text>
 
-  <!-- rewrite (outline) -->
-  <rect x="700" y="168" width="260" height="64" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
-  <text x="830" y="200" text-anchor="middle" class="outlineTitle" font-size="22">Prompt rewrite</text>
-  <text x="830" y="220" text-anchor="middle" class="outlineSub">optional · varies the angle</text>
+  <!-- rewrite (light green outline) -->
+  <rect x="552" y="150" width="260" height="64" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
+  <text x="682" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Prompt rewrite</text>
+  <text x="682" y="202" text-anchor="middle" class="outlineSub">varies the angle</text>
 
   <!-- workers -->
-  <rect x="150" y="300" width="160" height="84" rx="12" fill="#0E481F"/>
-  <text x="230" y="338" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
-  <text x="230" y="360" text-anchor="middle" class="blockSub">angle 1</text>
+  <rect x="295" y="296" width="150" height="84" rx="12" fill="#0E481F"/>
+  <text x="370" y="334" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
+  <text x="370" y="356" text-anchor="middle" class="blockSub">angle 1</text>
 
-  <rect x="350" y="300" width="160" height="84" rx="12" fill="#0E481F"/>
-  <text x="430" y="338" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
-  <text x="430" y="360" text-anchor="middle" class="blockSub">angle 2</text>
+  <rect x="465" y="296" width="150" height="84" rx="12" fill="#0E481F"/>
+  <text x="540" y="334" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
+  <text x="540" y="356" text-anchor="middle" class="blockSub">angle 2</text>
 
-  <rect x="550" y="300" width="160" height="84" rx="12" fill="#0E481F"/>
-  <text x="630" y="338" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
-  <text x="630" y="360" text-anchor="middle" class="blockSub">angle 3</text>
+  <rect x="635" y="296" width="150" height="84" rx="12" fill="#0E481F"/>
+  <text x="710" y="334" text-anchor="middle" class="blockTitle" font-size="21">Worker</text>
+  <text x="710" y="356" text-anchor="middle" class="blockSub">angle 3</text>
 
   <!-- synthesis -->
-  <rect x="370" y="416" width="340" height="48" rx="12" fill="#0E481F"/>
+  <rect x="360" y="416" width="360" height="48" rx="12" fill="#0E481F"/>
   <text x="540" y="446" text-anchor="middle" class="blockTitle" font-size="22">Synthesis · one final answer</text>
 </svg>
