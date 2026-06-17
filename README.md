@@ -19,11 +19,11 @@ Install as a global pi package from npm:
 pi install npm:@leblancfg/pi-fusion
 ```
 
-<!-- Or install directly from the GitHub repository: -->
+Or install directly from the GitHub repository:
 
-<!-- ```bash -->
-<!-- pi install git:github.com/leblancfg/pi-fusion -->
-<!-- ``` -->
+```bash
+pi install git:github.com/leblancfg/pi-fusion
+```
 
 Open pi and turn it on from the settings pane:
 
