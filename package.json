@@ -22,7 +22,7 @@
     "access": "public"
   },
   "files": [
-    "extensions/pi-fusion"
+    "dist/extensions/pi-fusion"
   ],
   "packageManager": "pnpm@10.22.0",
   "scripts": {
@@ -33,11 +33,14 @@
     "format:check": "prettier --check .",
     "smoke": "tsx scripts/smoke.ts",
     "eval": "tsx scripts/eval.ts",
-    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm test && pnpm run smoke"
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build && pnpm run smoke && pnpm run smoke:dist",
+    "build": "tsx scripts/build.ts",
+    "smoke:dist": "node scripts/smoke-dist.mjs",
+    "prepack": "npm run build"
   },
   "pi": {
     "extensions": [
-      "./extensions/pi-fusion/index.ts"
+      "./dist/extensions/pi-fusion/index.js"
     ],
     "image": "https://raw.githubusercontent.com/leblancfg/pi-fusion/main/docs/assets/social-preview.png"
   },
