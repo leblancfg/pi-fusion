@@ -22,7 +22,7 @@ const stub = {
 
 piFusion(stub as unknown as Parameters<typeof piFusion>[0]);
 
-const requiredFlags = ["fusion-disabled", "fusion-workers", "fusion-worker-model", "fusion-synthesizer-model", "fusion-planner-tools"];
+const requiredFlags = ["fusion-disabled", "fusion-workers", "fusion-worker-model", "fusion-synthesis-model", "fusion-planner-tools"];
 const requiredCommands = ["fusion"];
 const requiredEvents = ["session_start", "input", "before_agent_start"];
 

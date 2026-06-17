@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  ACTOR_PROMPT_MARKER,
-  buildActorPrompt,
+  SYNTHESIS_PROMPT_MARKER,
+  LEGACY_SYNTHESIS_PROMPT_MARKER,
+  buildSynthesisPrompt,
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
   buildRewritePrompt,
@@ -50,10 +51,10 @@ describe("settings", () => {
       "fusion-timeout-ms": "abc",
       "fusion-discovery-model": "anthropic/claude-haiku-4-5",
       "fusion-worker-model": "openai/gpt-5",
-      "fusion-synthesizer-model": "anthropic/claude-opus-4-5",
+      "fusion-synthesis-model": "anthropic/claude-opus-4-5",
       "fusion-discovery-thinking": "low",
       "fusion-worker-thinking": "high",
-      "fusion-synthesizer-thinking": "xhigh",
+      "fusion-synthesis-thinking": "xhigh",
     });
 
     assert.equal(settings.workerCount, 8);
@@ -62,36 +63,36 @@ describe("settings", () => {
     assert.equal(settings.timeoutMs, 600_000);
     assert.equal(settings.discoveryModel, "anthropic/claude-haiku-4-5");
     assert.equal(settings.workerModel, "openai/gpt-5");
-    assert.equal(settings.synthesizerModel, "anthropic/claude-opus-4-5");
+    assert.equal(settings.synthesisModel, "anthropic/claude-opus-4-5");
     assert.equal(settings.discoveryThinking, "low");
     assert.equal(settings.workerThinking, "high");
-    assert.equal(settings.synthesizerThinking, "xhigh");
+    assert.equal(settings.synthesisThinking, "xhigh");
   });
 
   it("normalizes current/default and ignores invalid reasoning levels", () => {
     const settings = resolveSettings({
       "fusion-discovery-thinking": "current",
       "fusion-worker-thinking": "current",
-      "fusion-synthesizer-thinking": "default",
+      "fusion-synthesis-thinking": "default",
     });
     assert.equal(settings.discoveryThinking, undefined);
     assert.equal(settings.workerThinking, undefined);
-    assert.equal(settings.synthesizerThinking, undefined);
+    assert.equal(settings.synthesisThinking, undefined);
 
     const invalid = resolveSettings({
       "fusion-discovery-thinking": "maximum",
       "fusion-worker-thinking": "maximum",
-      "fusion-synthesizer-thinking": "wat",
+      "fusion-synthesis-thinking": "wat",
     });
     assert.equal(invalid.discoveryThinking, undefined);
     assert.equal(invalid.workerThinking, undefined);
-    assert.equal(invalid.synthesizerThinking, undefined);
+    assert.equal(invalid.synthesisThinking, undefined);
   });
 
   it("keeps --fusion-model as a worker model alias and migrates legacy persisted model", () => {
     assert.equal(resolveSettings({ "fusion-model": "openai/gpt-5" }).workerModel, "openai/gpt-5");
     assert.equal(resolveSettings({}, { model: "anthropic/claude-sonnet-4-5" }).workerModel, "anthropic/claude-sonnet-4-5");
-    assert.equal(resolveSettings({ "fusion-worker-model": "current", "fusion-synthesizer-model": "default" }).workerModel, undefined);
+    assert.equal(resolveSettings({ "fusion-worker-model": "current", "fusion-synthesis-model": "default" }).workerModel, undefined);
   });
 
   it("is opt-in: off by default, on with --fusion-enabled, forced off by --fusion-disabled", () => {
@@ -185,7 +186,17 @@ describe("bypass", () => {
     assert.equal(
       shouldBypassFusion({
         enabled: true,
-        text: `${ACTOR_PROMPT_MARKER}\nhello`,
+        text: `${SYNTHESIS_PROMPT_MARKER}\nhello`,
+        source: "interactive",
+        streamingBehavior: undefined,
+        isIdle: true,
+      }),
+      "already fused",
+    );
+    assert.equal(
+      shouldBypassFusion({
+        enabled: true,
+        text: `${LEGACY_SYNTHESIS_PROMPT_MARKER}\nhello`,
         source: "interactive",
         streamingBehavior: undefined,
         isIdle: true,
@@ -277,8 +288,8 @@ describe("prompts", () => {
     assert.doesNotMatch(prompt, /mapper|planner|skeptic/);
   });
 
-  it("builds actor prompt with bounded worker outputs and image warning", () => {
-    const prompt = buildActorPrompt({
+  it("builds synthesis prompt with bounded worker outputs and image warning", () => {
+    const prompt = buildSynthesisPrompt({
       originalText: "Implement feature",
       discoveryContext: "Read src/index.ts and found entrypoint",
       promptVariations: ["Explore tests", "Explore API", "Explore docs"],
@@ -287,7 +298,7 @@ describe("prompts", () => {
       imageCount: 2,
     });
 
-    assert.match(prompt, new RegExp(ACTOR_PROMPT_MARKER));
+    assert.match(prompt, new RegExp(SYNTHESIS_PROMPT_MARKER));
     assert.ok(prompt.indexOf("## Shared discovery context") < prompt.indexOf("## Original user request"));
     assert.match(prompt, /Implement feature/);
     assert.match(prompt, /Workers did not see images/);
@@ -296,19 +307,19 @@ describe("prompts", () => {
     assert.match(prompt, /pi-fusion truncated/);
     assert.ok(Buffer.byteLength(prompt, "utf8") < 2_000);
   });
-  it("preserves the fusion marker when actor prompts are customized", () => {
-    const prompt = buildActorPrompt({
+  it("preserves the fusion marker when synthesis prompts are customized", () => {
+    const prompt = buildSynthesisPrompt({
       originalText: "Implement feature",
       discoveryContext: "",
       promptVariations: [],
       workerResults: [worker()],
       workerOutputBytes: 100,
       imageCount: 0,
-      template: "Custom actor prompt for {{task}}\n\n{{workerOutputs}}",
+      template: "Custom synthesis prompt for {{task}}\n\n{{workerOutputs}}",
     });
 
-    assert.match(prompt, new RegExp(ACTOR_PROMPT_MARKER));
-    assert.ok(prompt.indexOf(ACTOR_PROMPT_MARKER) < prompt.indexOf("Custom actor prompt"));
+    assert.match(prompt, new RegExp(SYNTHESIS_PROMPT_MARKER));
+    assert.ok(prompt.indexOf(SYNTHESIS_PROMPT_MARKER) < prompt.indexOf("Custom synthesis prompt"));
   });
 
   it("asks the rewrite model for exactly the configured number of prompts", () => {
@@ -381,7 +392,7 @@ describe("conversation collection", () => {
   it("collects recent user and assistant messages while skipping prior fusion bundles", () => {
     const entries = [
       { type: "message", message: { role: "user", content: [{ type: "text", text: "first" }] } },
-      { type: "message", message: { role: "user", content: [{ type: "text", text: `${ACTOR_PROMPT_MARKER}\nold` }] } },
+      { type: "message", message: { role: "user", content: [{ type: "text", text: `${SYNTHESIS_PROMPT_MARKER}\nold` }] } },
       { type: "message", message: { role: "assistant", content: [{ type: "text", text: "answer" }] } },
     ];
 

@@ -17,7 +17,7 @@ A preset can capture:
 - default worker model and reasoning effort;
 - per-worker model and reasoning overrides;
 - discovery model and reasoning effort;
-- synthesizer model and reasoning effort;
+- synthesis model and reasoning effort;
 - output, context, and timeout budgets.
 
 ## Where presets are stored
@@ -48,7 +48,7 @@ Move to **Presets** and press Enter. From there you can:
 - load any saved preset;
 - delete a saved preset.
 
-Saving from the pane writes exactly what the pane currently shows. If you set workers to `4`, choose `google-vertex/gemini-3.5-flash` as the worker model, and set the synthesizer to `anthropic/claude-sonnet-4-5`, that is what the preset stores. No extra hidden behavior.
+Saving from the pane writes exactly what the pane currently shows. If you set workers to `4`, choose `google-vertex/gemini-3.5-flash` as the worker model, and set the synthesis model to `anthropic/claude-sonnet-4-5`, that is what the preset stores. No extra hidden behavior.
 
 ## Create and load presets from slash commands
 
@@ -85,7 +85,7 @@ The file is intentionally plain JSON:
   "version": 1,
   "presets": {
     "cheap-planners": {
-      "description": "Gemini Flash workers feeding the current actor model",
+      "description": "Gemini Flash workers feeding the current synthesis model",
       "settings": {
         "enabled": true,
         "discoveryEnabled": true,
@@ -94,8 +94,8 @@ The file is intentionally plain JSON:
         "workerModel": "google-vertex/gemini-3.5-flash",
         "workerThinking": "off",
         "plannerToolMode": "all",
-        "synthesizerModel": null,
-        "synthesizerThinking": "current",
+        "synthesisModel": null,
+        "synthesisThinking": "current",
         "workerOutputBytes": 12000,
         "contextBytes": 16000,
         "timeoutMs": 600000,
@@ -115,7 +115,7 @@ Notes:
 - `plannerToolMode` controls discovery and worker tool access. Use `all` for normal tool access or `read-only` for the original `read`/`grep`/`find`/`ls`-only mode. Missing fields backfill to `all`.
 - `workers` is optional. If present, each entry can override the default worker model or reasoning for a specific worker slot.
 
-## Example: cheap planners, premium actor
+## Example: cheap planners, premium synthesis
 
 This is the configuration I expect many people to try first:
 
@@ -124,7 +124,7 @@ This is the configuration I expect many people to try first:
   "version": 1,
   "presets": {
     "cheap-planners": {
-      "description": "Fast worker fanout, current model as actor",
+      "description": "Fast worker fanout, current model as synthesis",
       "settings": {
         "enabled": true,
         "discoveryEnabled": true,
@@ -135,8 +135,8 @@ This is the configuration I expect many people to try first:
         "workerModel": "google-vertex/gemini-3.5-flash",
         "workerThinking": "off",
         "plannerToolMode": "all",
-        "synthesizerModel": null,
-        "synthesizerThinking": null,
+        "synthesisModel": null,
+        "synthesisThinking": null,
         "workerOutputBytes": 12000,
         "contextBytes": 16000,
         "timeoutMs": 600000
@@ -146,7 +146,7 @@ This is the configuration I expect many people to try first:
 }
 ```
 
-This keeps the expensive model in the actor seat and uses cheaper planners to reduce blind spots. It is not universally better. It is a good starting point when you want to test whether parallel planning buys more than it costs for your own workload.
+This keeps the expensive model in the synthesis seat and uses cheaper planners to reduce blind spots. It is not universally better. It is a good starting point when you want to test whether parallel planning buys more than it costs for your own workload.
 
 ## Example: four specialist workers
 
@@ -221,11 +221,11 @@ Add a `"prompts"` section at the top level of your `fusion.json`:
     "discovery": "...",
     "rewrite": "...",
     "worker": "...",
-    "actor": "..."
+    "synthesis": "..."
   },
   "presets": {
     "cheap-planners": {
-      "description": "Fast worker fanout, current model as actor",
+      "description": "Fast worker fanout, current model as synthesis",
       "settings": {
         ...
       }
@@ -271,15 +271,15 @@ This prompt runs on each parallel worker.
   - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
 
-#### 4. Actor/Synthesizer Prompt (`prompts.actor`)
+#### 4. Synthesis Prompt (`prompts.synthesis`)
 
-This prompt formats the final planning bundle injected into the main actor's turn.
+This prompt formats the final planning bundle injected into the synthesis turn.
 
 - **Placeholders:**
   - `{{task}}`: Your original prompt.
   - `{{discoveryContext}}`: Context loaded by the discovery agent.
   - `{{variations}}`: List of worker prompt variations.
   - `{{workerOutputs}}`: Outputs and plans produced by each worker.
-  - `{{imageNote}}`: A note telling the actor that workers did not see attached images (if any).
+  - `{{imageNote}}`: A note telling the synthesis step that workers did not see attached images (if any).
 
-> 💡 **Important:** The actor prompt template should contain `<!-- pi-fusion:actor-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom actor prompt omits it, pi-fusion prepends the marker defensively.
+> 💡 **Important:** The synthesis prompt template should contain `<!-- pi-fusion:synthesis-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom synthesis prompt omits it, pi-fusion prepends the marker defensively.

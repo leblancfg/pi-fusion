@@ -1,85 +1,82 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
   <title id="title">pi-fusion</title>
-  <desc id="desc">Multiple model calls merge into one response.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#050816"/>
-      <stop offset="0.54" stop-color="#20124d"/>
-      <stop offset="1" stop-color="#06121f"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="52%" cy="48%" r="62%">
-      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.42"/>
-      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="finalGradient" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#6ee7b7"/>
-      <stop offset="1" stop-color="#67e8f9"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#000" flood-opacity="0.42"/>
-    </filter>
-    <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="2" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,4 L5.5,2 z" fill="#93c5fd"/>
-    </marker>
-    <style>
-      @font-face {
-        font-family: 'Space Mono';
-        font-style: normal;
-        font-weight: 700;
-        src: url('fonts/space-mono-700.ttf') format('truetype');
-      }
-      text { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-      .kicker { font-size: 25px; font-weight: 800; fill: #c4b5fd; letter-spacing: 3px; }
-      .title { font-family: 'Space Mono', Menlo, Monaco, Consolas, monospace; font-size: 104px; font-weight: 700; fill: #ffffff; }
-      .sub { font-size: 35px; font-weight: 700; fill: #dbeafe; }
-      .small { font-size: 24px; font-weight: 650; fill: #cbd5e1; }
-      .model { fill: #111827; stroke: #a78bfa; stroke-width: 3; filter: url(#shadow); }
-      .modelText { font-size: 27px; font-weight: 800; fill: #f8fafc; }
-      .fusion { fill: #312e81; stroke: #c4b5fd; stroke-width: 3; filter: url(#shadow); }
-      .fusionText { font-size: 32px; font-weight: 800; fill: #f8fafc; }
-      .finalBox { fill: url(#finalGradient); filter: url(#shadow); }
-      .finalText { font-size: 39px; font-weight: 800; fill: #062033; }
-      .finalSub { font-size: 22px; font-weight: 750; fill: #075069; }
-      .logoCircle { fill: none; stroke: #c4b5fd; stroke-width: 7; filter: url(#shadow); }
-      .logoText { font-size: 76px; font-weight: 800; fill: #f8fafc; }
-      .line { fill: none; stroke: #38bdf8; stroke-width: 5; stroke-linecap: round; marker-end: url(#arrow); opacity: 0.95; }
-      .finalLine { fill: none; stroke: #c4b5fd; stroke-width: 6; stroke-linecap: round; marker-end: url(#arrow); opacity: 0.95; }
-    </style>
-  </defs>
+  <desc id="desc">Several models run in parallel, then one synthesizes the answer.</desc>
+  <style>
+    text { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .kicker { font-size: 22px; font-weight: 600; fill: #6E7268; letter-spacing: 4px; }
+    .title { font-size: 116px; font-weight: 800; fill: #16301F; letter-spacing: -3px; }
+    .sub { font-size: 33px; font-weight: 600; fill: #6E7268; }
+    .small { font-size: 23px; font-weight: 500; fill: #8B8F86; }
+    .blockTitle { fill: #EEF3EA; font-weight: 700; }
+    .blockSub { fill: rgba(238,243,234,0.72); font-size: 16px; font-weight: 500; }
+    .outlineTitle { fill: #0E481F; font-weight: 700; }
+    .outlineSub { fill: #6E7268; font-size: 16px; font-weight: 500; }
+    .pillText { fill: #16301F; font-size: 22px; font-weight: 600; }
+    .edge { fill: none; stroke: #0E481F; stroke-width: 2.5; stroke-linecap: round; opacity: 0.9; }
+    .edgeFaint { fill: none; stroke: #0E481F; stroke-width: 1.6; stroke-linecap: round; opacity: 0.32; }
+    .wordmark { fill: #6E7268; font-size: 24px; font-weight: 600; letter-spacing: 0.3px; }
+  </style>
 
-  <rect width="1280" height="640" fill="url(#bg)"/>
-  <rect width="1280" height="640" fill="url(#glow)"/>
-  <circle cx="1125" cy="96" r="220" fill="#38bdf8" opacity="0.10"/>
-  <circle cx="80" cy="610" r="245" fill="#8b5cf6" opacity="0.20"/>
+  <rect width="1280" height="640" fill="#ECEBE6"/>
 
-  <circle cx="1120" cy="132" r="58" class="logoCircle"/>
-  <text x="1120" y="157" text-anchor="middle" class="logoText">∪</text>
+  <!-- left: headline -->
+  <text x="88" y="214" class="kicker mono">COMPOUND AI · FOR PI</text>
+  <text x="84" y="320" class="title">pi-fusion</text>
+  <text x="90" y="384" class="sub">several models, in parallel</text>
+  <text x="90" y="430" class="small">one synthesized answer</text>
 
-  <text x="78" y="112" class="kicker">COMPOUND AI FOR PI</text>
-  <text x="74" y="236" class="title">pi-fusion</text>
-  <text x="82" y="296" class="sub">multiple model calls → one response</text>
-  <text x="84" y="354" class="small">many heads are better than one</text>
+  <!-- right: fan-out diagram -->
+  <!-- prompt -> discovery / rewrite -->
+  <path class="edge" d="M1000 168 C1000 214, 858 214, 858 260"/>
+  <path class="edge" d="M1000 168 C1000 214, 1142 214, 1142 260"/>
+  <!-- discovery / rewrite -> workers (faint fanout) -->
+  <path class="edgeFaint" d="M858 332 C858 372, 838 372, 838 412"/>
+  <path class="edgeFaint" d="M858 332 C858 372, 1000 372, 1000 412"/>
+  <path class="edgeFaint" d="M858 332 C858 372, 1162 372, 1162 412"/>
+  <path class="edgeFaint" d="M1142 332 C1142 372, 838 372, 838 412"/>
+  <path class="edgeFaint" d="M1142 332 C1142 372, 1000 372, 1000 412"/>
+  <path class="edgeFaint" d="M1142 332 C1142 372, 1162 372, 1162 412"/>
+  <!-- workers -> synthesis -->
+  <path class="edge" d="M838 506 C838 540, 940 540, 940 540"/>
+  <path class="edge" d="M1000 506 C1000 540, 1000 540, 1000 540"/>
+  <path class="edge" d="M1162 506 C1162 540, 1060 540, 1060 540"/>
+  <!-- discovery -> synthesis (context passed straight through, routed around the workers) -->
+  <path class="edge" d="M772 332 C668 412, 668 502, 762 560"/>
 
-  <rect x="106" y="448" width="190" height="78" rx="20" class="model"/>
-  <text x="145" y="496" class="modelText">model #1</text>
+  <!-- prompt pill -->
+  <rect x="888" y="104" width="224" height="64" rx="32" fill="#E3E2DC" stroke="#C7C7C0" stroke-width="2"/>
+  <text x="1000" y="144" text-anchor="middle" class="pillText">Your prompt</text>
 
-  <rect x="365" y="382" width="190" height="78" rx="20" class="model"/>
-  <text x="404" y="430" class="modelText">model #2</text>
+  <!-- discovery (light green outline) -->
+  <rect x="728" y="260" width="260" height="72" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
+  <text x="858" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Discovery</text>
+  <text x="858" y="320" text-anchor="middle" class="outlineSub">loads context once</text>
 
-  <rect x="365" y="514" width="190" height="78" rx="20" class="model"/>
-  <text x="404" y="562" class="modelText">model #3</text>
+  <!-- rewrite (outline) -->
+  <rect x="1012" y="260" width="260" height="72" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
+  <text x="1142" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Prompt rewrite</text>
+  <text x="1142" y="320" text-anchor="middle" class="outlineSub">varies the angle</text>
 
-  <circle cx="805" cy="487" r="58" class="fusion"/>
-  <text x="763" y="499" class="fusionText">fusion</text>
+  <!-- workers -->
+  <rect x="763" y="412" width="150" height="94" rx="12" fill="#0E481F"/>
+  <text x="838" y="454" text-anchor="middle" class="blockTitle" font-size="24">Worker</text>
+  <text x="838" y="478" text-anchor="middle" class="blockSub">angle 1</text>
 
-  <path d="M296 487 C435 487, 610 487, 744 487" class="line"/>
-  <path d="M555 421 C635 431, 696 462, 749 480" class="line"/>
-  <path d="M555 553 C635 542, 696 512, 749 494" class="line"/>
+  <rect x="925" y="412" width="150" height="94" rx="12" fill="#0E481F"/>
+  <text x="1000" y="454" text-anchor="middle" class="blockTitle" font-size="24">Worker</text>
+  <text x="1000" y="478" text-anchor="middle" class="blockSub">angle 2</text>
 
-  <path d="M863 487 C892 487, 910 487, 936 487" class="finalLine"/>
+  <rect x="1087" y="412" width="150" height="94" rx="12" fill="#0E481F"/>
+  <text x="1162" y="454" text-anchor="middle" class="blockTitle" font-size="24">Worker</text>
+  <text x="1162" y="478" text-anchor="middle" class="blockSub">angle 3</text>
 
-  <rect x="948" y="412" width="260" height="150" rx="34" fill="#67e8f9" filter="url(#shadow)"/>
-  <text x="1007" y="475" fill="#062033" class="finalText">single</text>
-  <text x="983" y="519" fill="#062033" class="finalText">response</text>
-  <text x="1001" y="547" fill="#075069" class="finalSub">one actor turn</text>
+  <!-- synthesis -->
+  <rect x="760" y="540" width="480" height="60" rx="12" fill="#0E481F"/>
+  <text x="1000" y="578" text-anchor="middle" class="blockTitle" font-size="26">Synthesis · one final answer</text>
+
+  <!-- logo bottom-left -->
+  <circle cx="100" cy="556" r="22" fill="none" stroke="#0E481F" stroke-width="4.5"/>
+  <text x="100" y="566" text-anchor="middle" class="mono" font-size="34" font-weight="700" fill="#0E481F">∪</text>
+  <text x="134" y="565" class="wordmark mono">pi-fusion</text>
 </svg>

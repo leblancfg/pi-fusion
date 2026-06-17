@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
-  buildActorPrompt,
+  buildSynthesisPrompt,
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
   buildRewritePrompt,
@@ -71,7 +71,7 @@ interface RunWorkerInput {
 }
 
 interface FusionRunResult {
-  actorPrompt: string;
+  synthesisPrompt: string;
   traceMessage: ReturnType<typeof buildFusionTraceMessage>;
 }
 
@@ -297,10 +297,10 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-model": pi.getFlag("fusion-model"),
     "fusion-discovery-model": pi.getFlag("fusion-discovery-model"),
     "fusion-worker-model": pi.getFlag("fusion-worker-model"),
-    "fusion-synthesizer-model": pi.getFlag("fusion-synthesizer-model"),
+    "fusion-synthesis-model": pi.getFlag("fusion-synthesis-model"),
     "fusion-discovery-thinking": pi.getFlag("fusion-discovery-thinking"),
     "fusion-worker-thinking": pi.getFlag("fusion-worker-thinking"),
-    "fusion-synthesizer-thinking": pi.getFlag("fusion-synthesizer-thinking"),
+    "fusion-synthesis-thinking": pi.getFlag("fusion-synthesis-thinking"),
     "fusion-planner-tools": pi.getFlag("fusion-planner-tools"),
     "fusion-preset": pi.getFlag("fusion-preset"),
   };
@@ -320,8 +320,8 @@ function settingsSummary(settings: FusionSettings): string {
     `discoveryThinking=${settings.discoveryThinking ?? "current"}`,
     `workerModel=${settings.workerModel ?? "current"}`,
     `workerThinking=${settings.workerThinking ?? "current"}`,
-    `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
-    `synthesizerThinking=${settings.synthesizerThinking ?? "current"}`,
+    `synthesisModel=${settings.synthesisModel ?? "current"}`,
+    `synthesisThinking=${settings.synthesisThinking ?? "current"}`,
     `plannerTools=${settings.plannerToolMode}`,
     `preset=${settings.preset ?? "none"}`,
   ].join(" ");
@@ -382,7 +382,7 @@ export default function piFusion(pi: ExtensionAPI): void {
     default: String(DEFAULT_SETTINGS.workerCount),
   });
   pi.registerFlag("fusion-output-bytes", {
-    description: "Max bytes from each worker inserted into the actor prompt",
+    description: "Max bytes from each worker inserted into the synthesis prompt",
     type: "string",
     default: String(DEFAULT_SETTINGS.workerOutputBytes),
   });
@@ -411,8 +411,8 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
-  pi.registerFlag("fusion-synthesizer-model", {
-    description: "Model for the synthesizer/actor turn, or current/default",
+  pi.registerFlag("fusion-synthesis-model", {
+    description: "Model for the synthesis turn, or current/default",
     type: "string",
     default: "current",
   });
@@ -426,8 +426,8 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
-  pi.registerFlag("fusion-synthesizer-thinking", {
-    description: "Reasoning effort for the synthesizer/actor turn: current/off/minimal/low/medium/high/xhigh",
+  pi.registerFlag("fusion-synthesis-thinking", {
+    description: "Reasoning effort for the synthesis turn: current/off/minimal/low/medium/high/xhigh",
     type: "string",
     default: "current",
   });
@@ -551,21 +551,16 @@ export default function piFusion(pi: ExtensionAPI): void {
         settings.workerModel = resolveSettings({ "fusion-worker-model": value }, settings).workerModel;
       else if (command === "worker-thinking" || command === "worker-reasoning") {
         settings.workerThinking = resolveSettings({ "fusion-worker-thinking": value }, settings).workerThinking;
-      } else if (command === "synthesizer-model" || command === "synth-model" || command === "synthesis-model") {
-        settings.synthesizerModel = resolveSettings({ "fusion-synthesizer-model": value }, settings).synthesizerModel;
-      } else if (
-        command === "synthesizer-thinking" ||
-        command === "synth-thinking" ||
-        command === "synthesizer-reasoning" ||
-        command === "synth-reasoning"
-      ) {
-        settings.synthesizerThinking = resolveSettings({ "fusion-synthesizer-thinking": value }, settings).synthesizerThinking;
+      } else if (command === "synthesis-model") {
+        settings.synthesisModel = resolveSettings({ "fusion-synthesis-model": value }, settings).synthesisModel;
+      } else if (command === "synthesis-thinking" || command === "synthesis-reasoning") {
+        settings.synthesisThinking = resolveSettings({ "fusion-synthesis-thinking": value }, settings).synthesisThinking;
       } else if (command === "preset") {
         const ok = await handlePresetCommand(value, ctx);
         if (!ok) return;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|tools all|read-only|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|tools all|read-only|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesis-model SPEC|synthesis-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -721,25 +716,25 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       const workerResults = await Promise.all(workerPromises);
       if (abort.signal.aborted) return undefined;
-      if (settings.synthesizerModel) {
-        const synthesizerModel = findModelBySpec(ctx, settings.synthesizerModel);
-        if (!synthesizerModel) {
-          ctx.ui.notify(`pi-fusion: synthesizer model not found: ${settings.synthesizerModel}`, "warning");
-        } else if (!(await pi.setModel(synthesizerModel))) {
-          ctx.ui.notify(`pi-fusion: no API key for synthesizer model: ${settings.synthesizerModel}`, "warning");
+      if (settings.synthesisModel) {
+        const synthesisModel = findModelBySpec(ctx, settings.synthesisModel);
+        if (!synthesisModel) {
+          ctx.ui.notify(`pi-fusion: synthesis model not found: ${settings.synthesisModel}`, "warning");
+        } else if (!(await pi.setModel(synthesisModel))) {
+          ctx.ui.notify(`pi-fusion: no API key for synthesis model: ${settings.synthesisModel}`, "warning");
         }
       }
-      if (settings.synthesizerThinking) pi.setThinkingLevel(settings.synthesizerThinking);
+      if (settings.synthesisThinking) pi.setThinkingLevel(settings.synthesisThinking);
 
       return {
-        actorPrompt: buildActorPrompt({
+        synthesisPrompt: buildSynthesisPrompt({
           originalText: task,
           discoveryContext,
           promptVariations: settings.rewriteEnabled ? promptVariations : [],
           workerResults,
           workerOutputBytes: settings.workerOutputBytes,
           imageCount,
-          template: prompts.actor,
+          template: prompts.synthesis,
         }),
         traceMessage: buildFusionTraceMessage({
           task,
@@ -784,6 +779,6 @@ export default function piFusion(pi: ExtensionAPI): void {
     setFusionStatus(ctx, undefined);
     const result = await runFusion(ctx, event.prompt, event.images?.length ?? 0);
     if (!result) return;
-    return { message: result.traceMessage, systemPrompt: `${event.systemPrompt}\n\n${result.actorPrompt}` };
+    return { message: result.traceMessage, systemPrompt: `${event.systemPrompt}\n\n${result.synthesisPrompt}` };
   });
 }

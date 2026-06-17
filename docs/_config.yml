@@ -6,6 +6,8 @@ repository: leblancfg/pi-fusion
 markdown: kramdown
 highlighter: rouge
 permalink: pretty
+kramdown:
+  smart_quotes: apos,apos,quot,quot
 exclude:
   - node_modules
   - package.json

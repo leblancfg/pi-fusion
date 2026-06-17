@@ -24,9 +24,9 @@ describe("fusion presets", () => {
         enabled: true,
         workerCount: 4,
         workerModel: "google-vertex/gemini-3.5-flash",
-        synthesizerModel: "anthropic/claude-sonnet-4-5",
+        synthesisModel: "anthropic/claude-sonnet-4-5",
         workerThinking: "off",
-        synthesizerThinking: "high",
+        synthesisThinking: "high",
         plannerToolMode: "read-only",
       },
     );
@@ -50,9 +50,9 @@ describe("fusion presets", () => {
     assert.equal(applied.discoveryModel, undefined);
     assert.equal(applied.discoveryThinking, undefined);
     assert.equal(applied.workerModel, "google-vertex/gemini-3.5-flash");
-    assert.equal(applied.synthesizerModel, "anthropic/claude-sonnet-4-5");
+    assert.equal(applied.synthesisModel, "anthropic/claude-sonnet-4-5");
     assert.equal(applied.workerThinking, "off");
-    assert.equal(applied.synthesizerThinking, "high");
+    assert.equal(applied.synthesisThinking, "high");
     assert.equal(applied.plannerToolMode, "read-only");
 
     assert.equal(await deleteFusionPreset(cwd, name, "project"), true);
@@ -78,7 +78,7 @@ describe("fusion presets", () => {
       assert.equal(globalFile.prompts.discovery, DEFAULT_PROMPTS.discovery);
       assert.equal(globalFile.prompts.rewrite, DEFAULT_PROMPTS.rewrite);
       assert.equal(globalFile.prompts.worker, DEFAULT_PROMPTS.worker);
-      assert.equal(globalFile.prompts.actor, DEFAULT_PROMPTS.actor);
+      assert.equal(globalFile.prompts.synthesis, DEFAULT_PROMPTS.synthesis);
 
       // 2. Load prompts - should fetch from global file
       const loaded1 = await loadFusionPrompts(cwd);
@@ -129,6 +129,39 @@ describe("fusion presets", () => {
         template: loaded3.discovery,
       });
       assert.equal(renderedProjectDiscovery, "PROJECT DISCOVERY: Fix bug");
+    } finally {
+      process.env.PI_AGENT_DIR = originalAgentDir;
+      process.env.PI_CODING_AGENT_DIR = originalCodingAgentDir;
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
+  it("migrates legacy actor prompt and synthesizer preset keys", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-fusion-legacy-"));
+
+    const originalAgentDir = process.env.PI_AGENT_DIR;
+    const originalCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_AGENT_DIR = cwd;
+    process.env.PI_CODING_AGENT_DIR = cwd;
+
+    try {
+      await fs.writeFile(
+        path.join(cwd, "fusion.json"),
+        JSON.stringify({
+          version: 1,
+          prompts: { actor: "LEGACY SYNTHESIS: {{task}}" },
+          presets: { legacy: { settings: { synthesizerModel: "openai/gpt-5", synthesizerThinking: "high" } } },
+        }),
+        "utf8",
+      );
+
+      const prompts = await loadFusionPrompts(cwd);
+      assert.equal(prompts.synthesis, "LEGACY SYNTHESIS: {{task}}");
+
+      const preset = findFusionPreset(await loadFusionPresets(cwd), "legacy");
+      const applied = applyFusionPresetSettings(resolveSettings({}), "legacy", preset!);
+      assert.equal(applied.synthesisModel, "openai/gpt-5");
+      assert.equal(applied.synthesisThinking, "high");
     } finally {
       process.env.PI_AGENT_DIR = originalAgentDir;
       process.env.PI_CODING_AGENT_DIR = originalCodingAgentDir;

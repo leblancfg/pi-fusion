@@ -32,7 +32,7 @@ Open pi and turn it on from the settings pane:
 /fusion
 ```
 
-**pi-fusion adds a planning fanout to pi.** Before the normal actor turn starts, it runs an
+**pi-fusion adds a planning fanout to pi.** Before the normal pi turn starts, it runs an
 (optional) discovery agent, rewrites variations of the prompt into complementary angles, fans out to
 planner workers, then injects their notes back into the main thread, that acts as a synthesis step.
 
@@ -48,12 +48,13 @@ In some cases, you can get better performance than frontier models with better p
 
 N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and
 judge behind one API route. pi-fusion is similar. It runs local pi subprocesses against your working
-tree, and hands their notes to the actor model you already chose. You control all configuration of
+tree, and hands their notes to the synthesis model you already chose. You control all configuration of
 how this happens, including whether the planning subprocesses get all tools or only read-only tools.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, system-ui, sans-serif","lineColor":"#0E481F","primaryColor":"#0E481F","primaryTextColor":"#EEF3EA","primaryBorderColor":"#0E481F"}}}%%
 flowchart LR
-  U[Your prompt] --> D["Discovery (optional)"]
+  U([Your prompt]) --> D["Discovery (optional)"]
   U --> R["Prompt rewrite (optional)"]
   D --> W1[Worker #1]
   D --> W2[Worker #2]
@@ -61,11 +62,17 @@ flowchart LR
   R --> W1
   R --> W2
   R --> W3
-  W1 --> A[Normal pi actor]
+  W1 --> A["Synthesis (pi actor turn)"]
   W2 --> A
   W3 --> A
   D --> A
-  A --> O[One final turn]
+  A --> O([One final turn])
+  classDef solid fill:#0E481F,stroke:#0E481F,color:#EEF3EA;
+  classDef outline fill:#E7ECE6,stroke:#0E481F,color:#0E481F;
+  classDef pill fill:#E3E2DC,stroke:#C7C7C0,color:#16301F;
+  class U,O pill;
+  class D,W1,W2,W3,A solid;
+  class R outline;
 ```
 
 ## Why this exists
@@ -111,7 +118,7 @@ In TUI mode, a fused turn shows a live pane:
 
 1. **Discovery** loads shared context once.
 2. **Workers** appear as vertical splits, each with its own prompt angle.
-3. **Actor** starts after the planning bundle is ready.
+3. **Synthesis** starts after the planning bundle is ready.
 
 Useful controls:
 
@@ -137,7 +144,7 @@ Good fit:
 Bad fit:
 
 - Tiny edits where startup latency costs more than the task.
-- Prompts with images. The actor can see them; discovery and workers currently cannot.
+- Prompts with images. The synthesis turn can see them; discovery and workers currently cannot.
 - Fully non-interactive runs where you need progress output on stdout. `pi-fusion` stays quiet there
   so it does not corrupt print/JSON output.
 
@@ -157,7 +164,7 @@ Open the settings pane:
 | Agent tools    | Switches discovery/workers between all tools and read-only.    |
 | Discovery      | Picks the context-loading model and reasoning effort.          |
 | Rewrite        | Toggles prompt rewriting before worker fanout.                 |
-| Synthesizer    | Picks the actor model and reasoning effort.                    |
+| Synthesis      | Picks the synthesis model and reasoning effort.                |
 | Save and close | Persists settings in the pi session.                           |
 
 Presets are user-defined snapshots of the settings pane. There are no built-in
@@ -184,7 +191,7 @@ CLI flags exist for repeatable starts:
 pi --fusion-workers 4 \
   --fusion-discovery-model anthropic/claude-haiku-4-5 \
   --fusion-worker-model anthropic/claude-sonnet-4-5 \
-  --fusion-synthesizer-model openai/gpt-5.2-codex
+  --fusion-synthesis-model openai/gpt-5.2-codex
 ```
 
 Use `current` or omit a model flag to keep the main session model. Reasoning values are:
@@ -219,11 +226,11 @@ Add a `"prompts"` section at the top level of your `fusion.json`:
     "discovery": "...",
     "rewrite": "...",
     "worker": "...",
-    "actor": "..."
+    "synthesis": "..."
   },
   "presets": {
     "cheap-planners": {
-      "description": "Fast worker fanout, current model as actor",
+      "description": "Fast worker fanout, current model as synthesis",
       "settings": {
         ...
       }
@@ -269,18 +276,18 @@ This prompt runs on each parallel worker.
   - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
 
-#### 4. Actor/Synthesizer Prompt (`prompts.actor`)
+#### 4. Synthesis Prompt (`prompts.synthesis`)
 
-This prompt formats the final planning bundle injected into the main actor's turn.
+This prompt formats the final planning bundle injected into the synthesis turn.
 
 - **Placeholders:**
   - `{{task}}`: Your original prompt.
   - `{{discoveryContext}}`: Context loaded by the discovery agent.
   - `{{variations}}`: List of worker prompt variations.
   - `{{workerOutputs}}`: Outputs and plans produced by each worker.
-  - `{{imageNote}}`: A note telling the actor that workers did not see attached images (if any).
+  - `{{imageNote}}`: A note telling the synthesis step that workers did not see attached images (if any).
 
-> 💡 **Important:** The actor prompt template should contain `<!-- pi-fusion:actor-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom actor prompt omits it, pi-fusion prepends the marker defensively.
+> 💡 **Important:** The synthesis prompt template should contain `<!-- pi-fusion:synthesis-prompt -->` so that subsequent conversation turns know a fused turn has finished and bypass fusion automatically. If a custom synthesis prompt omits it, pi-fusion prepends the marker defensively.
 
 ## Commands
 
@@ -304,10 +311,10 @@ This prompt formats the final planning bundle injected into the main actor's tur
 /fusion worker-model current
 /fusion worker-thinking medium
 /fusion worker-thinking current
-/fusion synthesizer-model openai/gpt-5.5
-/fusion synthesizer-model current
-/fusion synthesizer-thinking high
-/fusion synthesizer-thinking current
+/fusion synthesis-model openai/gpt-5.5
+/fusion synthesis-model current
+/fusion synthesis-thinking high
+/fusion synthesis-thinking current
 /fusion output 12000
 /fusion context 16000
 /fusion timeout 600000
@@ -327,8 +334,8 @@ pi --fusion-discovery-model anthropic/claude-haiku-4-5
 pi --fusion-discovery-thinking low
 pi --fusion-worker-model google/gemini-3.5-flash
 pi --fusion-worker-thinking medium
-pi --fusion-synthesizer-model openai/gpt-5.5
-pi --fusion-synthesizer-thinking high
+pi --fusion-synthesis-model openai/gpt-5.5
+pi --fusion-synthesis-thinking high
 pi --fusion-output-bytes 12000
 pi --fusion-context-bytes 16000
 pi --fusion-timeout-ms 600000
@@ -354,7 +361,7 @@ When fusion is armed, the next idle, non-command user input consumes that arm an
 - gives query rewriting no tools;
 - injects shared discovery context into every worker prompt;
 - asks workers for concise planning markdown;
-- inserts the final planning bundle into the actor turn's system prompt via `before_agent_start`.
+- inserts the final planning bundle into the synthesis turn's system prompt via `before_agent_start`.
 
 The user's message stays untouched in the session. `/tree` and `/fork` still show the original
 prompt, and the planning bundle does not accumulate across turns. Fusion then returns to off
@@ -368,14 +375,14 @@ Fusion is skipped for:
 - user bash (`!...`);
 - extension-injected input;
 - steering or follow-up messages queued while the agent is running;
-- prompts that are already fusion actor prompts;
+- prompts that are already fusion synthesis prompts;
 - any turn where fusion is off/disarmed.
 
 These skips keep the extension predictable and avoid recursion.
 
 ## Context budget
 
-Worker output inserted into the actor turn is capped per worker (`fusion-output-bytes`, default
+Worker output inserted into the synthesis turn is capped per worker (`fusion-output-bytes`, default
 `12000`). Recent conversation context sent to discovery and workers is capped separately
 (`fusion-context-bytes`, default `16000`). Discovery tool-result context is bounded before being
 shared downstream.
@@ -399,7 +406,7 @@ planning bundle lives in the per-turn system prompt and is regenerated each fuse
 - Some providers hide reasoning streams, so a worker column may show no reasoning even with
   reasoning enabled.
 - Discovery and worker tool access defaults to all tools. Use read-only planner tools for safer planning passes when you do not want subprocesses to run write-capable tools.
-- The current pipeline uses two LLM round trips before the actor turn. A lighter mode may exist
+- The current pipeline uses two LLM round trips before the synthesis turn. A lighter mode may exist
   later, but the explicit flow is better for testing right now.
 
 ## Development

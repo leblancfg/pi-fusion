@@ -2,7 +2,7 @@
 layout: default
 title: pi-fusion
 heading: pi-fusion
-lead: A compound-AI planning pass for pi. Several model calls explore your task in parallel, then merge into one actor turn.
+lead: A compound-AI planning pass for pi. Several model calls explore your task in parallel, then merge into one synthesis turn.
 description: pi-fusion is a compound AI planning fanout for pi: parallel model calls, optional discovery, prompt rewrites, configurable planner tools, and one final actor response.
 ---
 
@@ -20,11 +20,11 @@ description: pi-fusion is a compound AI planning fanout for pi: parallel model c
 <section class="grid" aria-label="How it works">
   <article class="card">
     <h2>What it does</h2>
-    <p>Workers plan in parallel with configurable tool access, then their notes are injected into the actor's system prompt for that turn only.</p>
+    <p>Workers plan in parallel with configurable tool access, then their notes are injected into the synthesis turn's system prompt for that turn only.</p>
   </article>
   <article class="card">
     <h2>Why bother</h2>
-    <p>A cheap test-time compute fanout can catch missed files, alternate fixes, or risks before the actor starts editing.</p>
+    <p>A cheap test-time compute fanout can catch missed files, alternate fixes, or risks before the synthesis turn starts editing.</p>
   </article>
   <article class="card">
     <h2>When to use it</h2>

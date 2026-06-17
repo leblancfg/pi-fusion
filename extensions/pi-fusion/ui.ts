@@ -21,13 +21,13 @@ import {
 import { applyFusionPresetSettings, deleteFusionPreset, loadFusionPresets, saveFusionPreset, type LoadedFusionPreset } from "./presets.ts";
 
 interface FusionPaneResult {
-  action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesizer-model" | "configure-workers" | "manage-presets";
+  action: "save" | "cancel" | "pick-discovery-model" | "pick-synthesis-model" | "configure-workers" | "manage-presets";
   settings: FusionSettings;
 }
 
 type WorkerPaneResult = { action: "back" } | { action: "pick-model"; target: number; index: number };
 
-type ModelField = "discoveryModel" | "workerModel" | "synthesizerModel";
+type ModelField = "discoveryModel" | "workerModel" | "synthesisModel";
 
 type ModelChoice = {
   spec: string;
@@ -150,7 +150,7 @@ const PICKER_PANE_MAX_HEIGHT = 26;
 
 class FusionPane {
   private selected = 0;
-  private readonly rows = ["enabled", "tools", "presets", "workers", "discovery", "rewrite", "synthesizer", "save"] as const;
+  private readonly rows = ["enabled", "tools", "presets", "workers", "discovery", "rewrite", "synthesis", "save"] as const;
 
   constructor(
     private readonly theme: Theme,
@@ -199,7 +199,7 @@ class FusionPane {
       if (row === "presets") this.done({ action: "manage-presets", settings: this.settings });
       else if (row === "workers") this.done({ action: "configure-workers", settings: this.settings });
       else if (row === "discovery") this.done({ action: "pick-discovery-model", settings: this.settings });
-      else if (row === "synthesizer") this.done({ action: "pick-synthesizer-model", settings: this.settings });
+      else if (row === "synthesis") this.done({ action: "pick-synthesis-model", settings: this.settings });
       else if (row === "save") this.done({ action: "save", settings: this.settings });
       else this.adjust(row, 1);
     }
@@ -227,9 +227,9 @@ class FusionPane {
       this.renderSettingRow("discovery", "Discovery", discoveryValue, "space on/off • enter model • ←/→ effort"),
       this.renderSettingRow("rewrite", "Rewrite", this.settings.rewriteEnabled ? th.fg("success", "on") : th.fg("muted", "off"), "space on/off"),
       this.renderSettingRow(
-        "synthesizer",
-        "Synthesizer",
-        formatModelReasoning(this.settings.synthesizerModel, this.settings.synthesizerThinking),
+        "synthesis",
+        "Synthesis",
+        formatModelReasoning(this.settings.synthesisModel, this.settings.synthesisThinking),
         "enter model • ←/→ effort",
       ),
       this.renderSettingRow("save", "Save and close", th.fg("accent", "enter"), "esc cancel"),
@@ -239,7 +239,7 @@ class FusionPane {
       this.theme,
       "LLM Fusion",
       [
-        ` ${th.fg("dim", "parallel planning workers → one synthesizer/actor")}`,
+        ` ${th.fg("dim", "parallel planning workers → one synthesis step")}`,
         "",
         ...rows,
         "",
@@ -265,8 +265,8 @@ class FusionPane {
       this.settings.discoveryThinking = cycleThinking(this.settings.discoveryThinking, delta);
     } else if (row === "rewrite") {
       this.settings.rewriteEnabled = !this.settings.rewriteEnabled;
-    } else if (row === "synthesizer") {
-      this.settings.synthesizerThinking = cycleThinking(this.settings.synthesizerThinking, delta);
+    } else if (row === "synthesis") {
+      this.settings.synthesisThinking = cycleThinking(this.settings.synthesisThinking, delta);
     }
   }
 
@@ -466,10 +466,10 @@ function describePreset(preset: LoadedFusionPreset): string {
   const settings = preset.settings;
   const workers = settings.workerCount === undefined ? "workers:current" : `workers:${settings.workerCount}`;
   const workerModel = settings.workerModel ?? "worker:current";
-  const synthesizerModel = settings.synthesizerModel ?? "synth:current";
+  const synthesisModel = settings.synthesisModel ?? "synthesis:current";
   const scope = preset.scope === "project" ? "project" : "global";
   const description = preset.description ? `${preset.description} · ` : "";
-  return `${description}${scope} · ${workers} · ${workerModel} → ${synthesizerModel}`;
+  return `${description}${scope} · ${workers} · ${workerModel} → ${synthesisModel}`;
 }
 
 async function showFusionPresetManager(ctx: ExtensionContext, draft: FusionSettings): Promise<FusionSettings> {
@@ -668,8 +668,8 @@ export async function showFusionPane(
       continue;
     }
 
-    const field = result.action === "pick-discovery-model" ? "discoveryModel" : "synthesizerModel";
-    const title = field === "discoveryModel" ? "Select discovery model" : "Select synthesizer model";
+    const field = result.action === "pick-discovery-model" ? "discoveryModel" : "synthesisModel";
+    const title = field === "discoveryModel" ? "Select discovery model" : "Select synthesis model";
     const selected = await pickModel(ctx, title, draft[field], choices);
     if (selected !== null) setModelChoice(draft, field, selected);
   }

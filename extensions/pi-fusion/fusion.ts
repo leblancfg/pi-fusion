@@ -1,4 +1,6 @@
-export const ACTOR_PROMPT_MARKER = "<!-- pi-fusion:actor-prompt -->";
+export const SYNTHESIS_PROMPT_MARKER = "<!-- pi-fusion:synthesis-prompt -->";
+// TODO(2026-07-17): remove legacy marker once in-flight sessions/configs have migrated off "actor".
+export const LEGACY_SYNTHESIS_PROMPT_MARKER = "<!-- pi-fusion:actor-prompt -->";
 
 export type FusionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 export type FusionThinkingChoice = "current" | FusionThinkingLevel;
@@ -23,16 +25,19 @@ export interface FusionSettings {
   timeoutMs: number;
   discoveryModel: string | undefined;
   workerModel: string | undefined;
-  synthesizerModel: string | undefined;
+  synthesisModel: string | undefined;
   discoveryThinking: FusionThinkingLevel | undefined;
   workerThinking: FusionThinkingLevel | undefined;
-  synthesizerThinking: FusionThinkingLevel | undefined;
+  synthesisThinking: FusionThinkingLevel | undefined;
   plannerToolMode: FusionPlannerToolMode;
   preset?: string;
 }
 
 export interface PersistedFusionSettings extends Partial<FusionSettings> {
   model?: string;
+  // TODO(2026-07-17): remove legacy synthesizer* keys once persisted sessions/presets have migrated to synthesis*.
+  synthesizerModel?: string;
+  synthesizerThinking?: FusionThinkingLevel;
 }
 
 export interface FusionFlags {
@@ -47,10 +52,10 @@ export interface FusionFlags {
   "fusion-model"?: boolean | string;
   "fusion-discovery-model"?: boolean | string;
   "fusion-worker-model"?: boolean | string;
-  "fusion-synthesizer-model"?: boolean | string;
+  "fusion-synthesis-model"?: boolean | string;
   "fusion-discovery-thinking"?: boolean | string;
   "fusion-worker-thinking"?: boolean | string;
-  "fusion-synthesizer-thinking"?: boolean | string;
+  "fusion-synthesis-thinking"?: boolean | string;
   "fusion-planner-tools"?: boolean | string;
   "fusion-preset"?: boolean | string;
 }
@@ -130,10 +135,10 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   timeoutMs: 600_000,
   discoveryModel: undefined,
   workerModel: undefined,
-  synthesizerModel: undefined,
+  synthesisModel: undefined,
   discoveryThinking: undefined,
   workerThinking: undefined,
-  synthesizerThinking: undefined,
+  synthesisThinking: undefined,
   plannerToolMode: "all",
   preset: undefined,
 };
@@ -207,6 +212,9 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
 
   const settings = { ...DEFAULT_SETTINGS, ...persistedWithoutLegacy };
   settings.workerModel = settings.workerModel ?? normalizeModelSpec(persisted?.model);
+  // TODO(2026-07-17): remove legacy synthesizer* migration once persisted sessions/presets have moved to synthesis*.
+  settings.synthesisModel = settings.synthesisModel ?? normalizeModelSpec(persisted?.synthesizerModel);
+  settings.synthesisThinking = settings.synthesisThinking ?? normalizeThinkingChoice(persisted?.synthesizerThinking);
 
   // Opt-in by default: fusion is off unless armed via --fusion-enabled, a
   // persisted /fusion on, or the settings pane. --fusion-disabled forces off.
@@ -238,22 +246,22 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
 
   const discoveryModelFlag = flags["fusion-discovery-model"];
   const workerModelFlag = flags["fusion-worker-model"] ?? flags["fusion-model"];
-  const synthesizerModelFlag = flags["fusion-synthesizer-model"];
+  const synthesisModelFlag = flags["fusion-synthesis-model"];
   const discoveryThinkingFlag = flags["fusion-discovery-thinking"];
   const workerThinkingFlag = flags["fusion-worker-thinking"];
-  const synthesizerThinkingFlag = flags["fusion-synthesizer-thinking"];
+  const synthesisThinkingFlag = flags["fusion-synthesis-thinking"];
   if (typeof discoveryModelFlag === "string") settings.discoveryModel = normalizeModelSpec(discoveryModelFlag);
   if (typeof workerModelFlag === "string") settings.workerModel = normalizeModelSpec(workerModelFlag);
-  if (typeof synthesizerModelFlag === "string") settings.synthesizerModel = normalizeModelSpec(synthesizerModelFlag);
+  if (typeof synthesisModelFlag === "string") settings.synthesisModel = normalizeModelSpec(synthesisModelFlag);
   if (typeof discoveryThinkingFlag === "string") settings.discoveryThinking = normalizeThinkingChoice(discoveryThinkingFlag);
   if (typeof workerThinkingFlag === "string") settings.workerThinking = normalizeThinkingChoice(workerThinkingFlag);
-  if (typeof synthesizerThinkingFlag === "string") settings.synthesizerThinking = normalizeThinkingChoice(synthesizerThinkingFlag);
+  if (typeof synthesisThinkingFlag === "string") settings.synthesisThinking = normalizeThinkingChoice(synthesisThinkingFlag);
   settings.discoveryModel = normalizeModelSpec(settings.discoveryModel);
   settings.workerModel = normalizeModelSpec(settings.workerModel);
-  settings.synthesizerModel = normalizeModelSpec(settings.synthesizerModel);
+  settings.synthesisModel = normalizeModelSpec(settings.synthesisModel);
   settings.discoveryThinking = normalizeThinkingChoice(settings.discoveryThinking);
   settings.workerThinking = normalizeThinkingChoice(settings.workerThinking);
-  settings.synthesizerThinking = normalizeThinkingChoice(settings.synthesizerThinking);
+  settings.synthesisThinking = normalizeThinkingChoice(settings.synthesisThinking);
   settings.plannerToolMode = normalizePlannerToolMode(settings.plannerToolMode);
   settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
 
@@ -269,7 +277,7 @@ export function shouldBypassFusion(input: BypassInput): string | undefined {
   if (!input.isIdle) return "agent is already running";
   if (trimmed.startsWith("/")) return "slash command or prompt template";
   if (trimmed.startsWith("!")) return "user bash command";
-  if (input.text.includes(ACTOR_PROMPT_MARKER)) return "already fused";
+  if (input.text.includes(SYNTHESIS_PROMPT_MARKER) || input.text.includes(LEGACY_SYNTHESIS_PROMPT_MARKER)) return "already fused";
   return undefined;
 }
 
@@ -451,7 +459,7 @@ export interface FusionPrompts {
   discovery: string;
   rewrite: string;
   worker: string;
-  actor: string;
+  synthesis: string;
 }
 
 export const DEFAULT_PROMPTS: FusionPrompts = {
@@ -476,7 +484,7 @@ Return a context handoff in markdown with:
 1. **Context loaded** — the files, symbols, APIs, commands, snippets, and search results you inspected, with concrete paths/line ranges and a neutral one-line note of what each contains (not why it matters or whether it is useful).
 2. **Gaps** — relevant context you could not load, if any.
 
-State facts only. Include enough detail that workers and the synthesizer can avoid re-reading the same files. Then stop.`,
+State facts only. Include enough detail that workers and the synthesis step can avoid re-reading the same files. Then stop.`,
 
   rewrite: `Rewrite the user's request into {{workerCount}} complementary exploration prompts for parallel planning workers.
 
@@ -492,7 +500,7 @@ Return only a JSON array of {{workerCount}} strings. No markdown, no explanation
 
   worker: `{{discoveryContext}}You are worker {{workerName}} in an LLM Fusion planning pass.
 
-Your job is to think and investigate before the main actor acts. {{toolGuidance}} {{discoveryGuidance}}
+Your job is to think and investigate before the synthesis step runs. {{toolGuidance}} {{discoveryGuidance}}
 
 Working directory: {{cwd}}
 
@@ -510,12 +518,12 @@ Return concise markdown with these sections:
 
 1. **Understanding** — what this exploration prompt means for the original request.
 2. **Additional context** — only new files, symbols, patterns, or commands beyond discovery.
-3. **Plan** — concrete steps for the actor.
+3. **Plan** — concrete steps for the synthesis step.
 4. **Risks and verification** — edge cases, tests, or manual checks.
 
-Keep the result useful for a downstream actor. Do not implement anything.`,
+Keep the result useful for the downstream synthesis step. Do not implement anything.`,
 
-  actor: `<!-- pi-fusion:actor-prompt -->
+  synthesis: `<!-- pi-fusion:synthesis-prompt -->
 {{discoveryContext}}# LLM Fusion planning bundle
 
 A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.{{imageNote}}
@@ -528,7 +536,7 @@ A discovery agent gathered the shared context above, a query-rewrite pass genera
 
 {{workerOutputs}}
 
-## Actor instructions
+## Synthesis instructions
 
 - Act on the original request, not on the workers' wording.
 - Use shared discovery context before re-reading files; avoid redundant tool calls unless verification or missing context requires them.
@@ -554,7 +562,7 @@ function plannerToolGuidance(mode: FusionPlannerToolMode, role: "discovery" | "w
       : "Tool access: read-only tools only. Do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes.";
   }
 
-  return "Tool access: all available tools. Use them when they help investigation, but keep the result useful for the downstream actor and avoid unnecessary changes.";
+  return "Tool access: all available tools. Use them when they help investigation, but keep the result useful for the downstream synthesis step and avoid unnecessary changes.";
 }
 
 export function buildDiscoveryPrompt(input: {
@@ -649,7 +657,7 @@ export function buildWorkerPrompt(input: {
   });
 }
 
-export function formatWorkerForActor(result: WorkerResult, maxBytes: number): string {
+export function formatWorkerForSynthesis(result: WorkerResult, maxBytes: number): string {
   const status = result.ok ? "completed" : result.timedOut ? "timed out" : `failed${result.exitCode === null ? "" : ` (${result.exitCode})`}`;
   const diagnostics = result.stderr.trim() && !result.ok ? `\n\nStderr:\n${truncateUtf8(result.stderr.trim(), 2_000)}` : "";
   const usage = result.usage.turns
@@ -661,7 +669,7 @@ export function formatWorkerForActor(result: WorkerResult, maxBytes: number): st
   return `## Worker ${result.index + 1}: ${result.lens} — ${status}\n\n${truncateUtf8(result.output.trim() || "(no output)", maxBytes)}${diagnostics}${usage}`;
 }
 
-export function buildActorPrompt(input: {
+export function buildSynthesisPrompt(input: {
   originalText: string;
   discoveryContext: string;
   promptVariations: string[];
@@ -670,8 +678,8 @@ export function buildActorPrompt(input: {
   imageCount: number;
   template?: string;
 }): string {
-  const templateStr = input.template ?? DEFAULT_PROMPTS.actor;
-  const workers = input.workerResults.map((result) => formatWorkerForActor(result, input.workerOutputBytes)).join("\n\n---\n\n");
+  const templateStr = input.template ?? DEFAULT_PROMPTS.synthesis;
+  const workers = input.workerResults.map((result) => formatWorkerForSynthesis(result, input.workerOutputBytes)).join("\n\n---\n\n");
   const imageNote =
     input.imageCount > 0 ? `\n\nNote: the user attached ${input.imageCount} image(s). Workers did not see images; inspect them yourself.` : "";
   const discovery = input.discoveryContext.trim() ? `## Shared discovery context\n\n${truncateUtf8(input.discoveryContext.trim(), 64_000)}\n\n` : "";
@@ -687,7 +695,7 @@ export function buildActorPrompt(input: {
     variations,
     workerOutputs: workers || "(no worker output)",
   });
-  return prompt.includes(ACTOR_PROMPT_MARKER) ? prompt : `${ACTOR_PROMPT_MARKER}\n${prompt}`;
+  return prompt.includes(SYNTHESIS_PROMPT_MARKER) ? prompt : `${SYNTHESIS_PROMPT_MARKER}\n${prompt}`;
 }
 
 function getContentText(content: unknown): string {
@@ -715,7 +723,7 @@ export function collectRecentConversation(entries: unknown[], maxBytes: number):
     if (role !== "user" && role !== "assistant") continue;
 
     const text = getContentText(entry.message.content).trim();
-    if (!text || text.includes(ACTOR_PROMPT_MARKER)) continue;
+    if (!text || text.includes(SYNTHESIS_PROMPT_MARKER) || text.includes(LEGACY_SYNTHESIS_PROMPT_MARKER)) continue;
 
     chunks.unshift(`### ${role}\n\n${text}`);
     const joined = chunks.join("\n\n");

@@ -31,6 +31,8 @@ interface FusionPresetFile {
     discovery?: string;
     rewrite?: string;
     worker?: string;
+    synthesis?: string;
+    // TODO(2026-07-17): remove legacy "actor" prompt key once configs have migrated to "synthesis".
     actor?: string;
   };
 }
@@ -63,16 +65,27 @@ export function snapshotFusionSettings(settings: FusionSettings): PersistedFusio
     timeoutMs: settings.timeoutMs,
     discoveryModel: settings.discoveryModel,
     workerModel: settings.workerModel,
-    synthesizerModel: settings.synthesizerModel,
+    synthesisModel: settings.synthesisModel,
     discoveryThinking: settings.discoveryThinking,
     workerThinking: settings.workerThinking,
-    synthesizerThinking: settings.synthesizerThinking,
+    synthesisThinking: settings.synthesisThinking,
     plannerToolMode: settings.plannerToolMode,
   };
 }
 
 export function applyFusionPresetSettings(current: FusionSettings, name: string, preset: FusionPresetRecord): FusionSettings {
   return resolveSettings({}, { ...current, plannerToolMode: DEFAULT_SETTINGS.plannerToolMode, ...preset.settings, preset: name });
+}
+
+// TODO(2026-07-17): remove once persisted presets have migrated synthesizer* keys to synthesis*.
+function migrateLegacySettings(settings: PersistedFusionSettings): PersistedFusionSettings {
+  const migrated = { ...settings };
+  if (migrated.synthesisModel === undefined && migrated.synthesizerModel !== undefined) migrated.synthesisModel = migrated.synthesizerModel;
+  if (migrated.synthesisThinking === undefined && migrated.synthesizerThinking !== undefined)
+    migrated.synthesisThinking = migrated.synthesizerThinking;
+  delete migrated.synthesizerModel;
+  delete migrated.synthesizerThinking;
+  return migrated;
 }
 
 function coercePresetRecord(value: unknown): FusionPresetRecord | undefined {
@@ -82,7 +95,7 @@ function coercePresetRecord(value: unknown): FusionPresetRecord | undefined {
     record.settings && typeof record.settings === "object" ? (record.settings as PersistedFusionSettings) : (value as PersistedFusionSettings);
   return {
     description: typeof record.description === "string" ? record.description : undefined,
-    settings,
+    settings: migrateLegacySettings(settings),
   };
 }
 
@@ -159,7 +172,8 @@ export async function loadFusionPrompts(cwd: string): Promise<FusionPrompts> {
     prompts.discovery = file.prompts?.discovery ?? prompts.discovery;
     prompts.rewrite = file.prompts?.rewrite ?? prompts.rewrite;
     prompts.worker = file.prompts?.worker ?? prompts.worker;
-    prompts.actor = file.prompts?.actor ?? prompts.actor;
+    // TODO(2026-07-17): drop the file.prompts?.actor fallback once configs have migrated to "synthesis".
+    prompts.synthesis = file.prompts?.synthesis ?? file.prompts?.actor ?? prompts.synthesis;
   }
 
   return prompts;
