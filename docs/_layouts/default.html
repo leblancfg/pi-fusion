@@ -40,8 +40,8 @@
         <p class="lead">{{ page.lead }}</p>
         {% endif %}
         <nav class="actions" aria-label="Site navigation">
-          <a class="button primary" href="{{ '/' | relative_url }}">Overview</a>
-          <a class="button" href="{{ '/presets/' | relative_url }}">Presets & Prompts</a>
+          <a class="button{% if page.url == '/' %} primary{% endif %}" href="{{ '/' | relative_url }}">Overview</a>
+          <a class="button{% if page.url == '/presets/' %} primary{% endif %}" href="{{ '/presets/' | relative_url }}">Presets & Prompts</a>
           <a class="button" href="https://github.com/leblancfg/pi-fusion">Source</a>
           <a class="button" href="https://pi.dev/packages/@leblancfg/pi-fusion">pi package</a>
         </nav>
