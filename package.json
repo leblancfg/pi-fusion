@@ -36,7 +36,7 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build && pnpm run smoke && pnpm run smoke:dist",
     "build": "tsx scripts/build.ts",
     "smoke:dist": "node scripts/smoke-dist.mjs",
-    "prepack": "npm run build"
+    "prepare": "pnpm run build"
   },
   "pi": {
     "extensions": [
