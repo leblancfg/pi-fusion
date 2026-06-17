@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/leblancfg/pi-fusion/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leblancfg/pi-fusion/ci.yml?branch=main&style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@leblancfg/pi-fusion"><img alt="npm version" src="https://img.shields.io/npm/v/@leblancfg/pi-fusion?style=flat-square"></a>
   <a href="https://github.com/leblancfg/pi-fusion/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/leblancfg/pi-fusion?style=flat-square"></a>
   <a href="https://pi.dev/packages/@leblancfg/pi-fusion"><img alt="pi package" src="https://img.shields.io/badge/pi-package-7c3aed?style=flat-square"></a>
   <a href="https://leblancfg.com/pi-fusion/"><img alt="docs" src="https://img.shields.io/badge/docs-github%20pages-2563eb?style=flat-square"></a>
@@ -33,8 +34,7 @@ Open pi and turn it on from the settings pane:
 
 **pi-fusion adds a planning fanout to pi.** Before the normal actor turn starts, it runs an
 (optional) discovery agent, rewrites variations of the prompt into complementary angles, fans out to
-read-only planner workers, then injects their notes back into the main thread, that acts as a
-synthesis step.
+planner workers, then injects their notes back into the main thread, that acts as a synthesis step.
 
 Combining independent model responses has been shown to outscore the individual frontier models on
 many benchmarks. Because independent passes behave differently, the synthesis model can reuse the
@@ -47,14 +47,14 @@ In some cases, you can get better performance than frontier models with better p
 </p>
 
 N.B. OpenRouter has a hosted Fusion router (`openrouter/fusion`) that runs a multi-model panel and
-judge behind one API route. pi-fusion is similar. It runs local read-only pi subprocesses against
-your working tree, and hands their notes to the actor model you already chose. You control all
-configuration of how this happens.
+judge behind one API route. pi-fusion is similar. It runs local pi subprocesses against your working
+tree, and hands their notes to the actor model you already chose. You control all configuration of
+how this happens, including whether the planning subprocesses get all tools or only read-only tools.
 
 ```mermaid
 flowchart LR
-  U[Your prompt] --> D["Discovery (optional)<br/>read, grep, find, ls"]
-  U --> R["Prompt rewrite (optional)<br/>no tools"]
+  U[Your prompt] --> D["Discovery (optional)"]
+  U --> R["Prompt rewrite (optional)"]
   D --> W1[Worker #1]
   D --> W2[Worker #2]
   D --> W3[Worker #3]
@@ -149,23 +149,23 @@ Open the settings pane:
 /fusion
 ```
 
-The rows are intentionally boring:
-
 | Row            | What it changes                                                |
 | -------------- | -------------------------------------------------------------- |
 | Next turn      | Arms fusion for the next eligible user prompt, then turns off. |
 | Presets        | Saves the current pane settings, loads saved ones, or deletes. |
 | Workers        | Sets worker count and opens per-worker model settings.         |
+| Agent tools    | Switches discovery/workers between all tools and read-only.    |
 | Discovery      | Picks the context-loading model and reasoning effort.          |
 | Rewrite        | Toggles prompt rewriting before worker fanout.                 |
 | Synthesizer    | Picks the actor model and reasoning effort.                    |
 | Save and close | Persists settings in the pi session.                           |
 
-Presets are user-defined snapshots of the settings pane. There are no built-in `fast`, `deep`, or
-`budget` profiles because those would go stale and hide assumptions. Save your own from `/fusion` →
-**Presets**. Global presets live in `~/.pi/agent/fusion.json`; project presets live in
-`.pi/fusion.json` and override global presets with the same name. See
-[docs/presets.md](docs/presets.md) for the full format and examples.
+Presets are user-defined snapshots of the settings pane. There are no built-in
+profiles, because those would go stale and hide assumptions. Save your own from
+`/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.json`;
+project presets live in `.pi/fusion.json` and override global presets with the
+same name. See [docs/presets.md](docs/presets.md) for the full format and
+examples.
 
 The status bar uses a compact union marker: `∪̸` means fusion is off, and `∪` means the next eligible
 turn is armed.
@@ -238,12 +238,13 @@ Each prompt supports simple `{{placeholder}}` templating. You can rearrange, rew
 
 #### 1. Discovery Prompt (`prompts.discovery`)
 
-This prompt guides the read-only discovery agent to explore your codebase.
+This prompt guides the discovery agent to explore your codebase.
 
 - **Placeholders:**
   - `{{cwd}}`: Working directory of your project.
   - `{{task}}`: Your original prompt.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
+  - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
 
 #### 2. Prompt Rewrite (`prompts.rewrite`)
 
@@ -256,7 +257,7 @@ This prompt is used to ask the rewrite model to generate worker prompts.
 
 #### 3. Worker Prompt (`prompts.worker`)
 
-This prompt runs on each parallel read-only worker.
+This prompt runs on each parallel worker.
 
 - **Placeholders:**
   - `{{cwd}}`: Working directory of your project.
@@ -265,6 +266,7 @@ This prompt runs on each parallel read-only worker.
   - `{{discoveryContext}}`: Context loaded and handed off by the discovery agent.
   - `{{workerName}}`: Slot index/name (e.g. `#1`, `#2`).
   - `{{discoveryGuidance}}`: Pre-formatted guidance on how to use the discovery context.
+  - `{{toolGuidance}}`: Pre-formatted guidance for the selected planner tool mode.
   - `{{recentContext}}`: Pre-formatted recent conversation history.
 
 #### 4. Actor/Synthesizer Prompt (`prompts.actor`)
@@ -292,6 +294,8 @@ This prompt formats the final planning bundle injected into the main actor's tur
 /fusion preset save-project repo-review
 /fusion preset cheap-planners
 /fusion workers 4
+/fusion tools all
+/fusion tools read-only
 /fusion discovery-model anthropic/claude-haiku-4-5
 /fusion discovery-model current
 /fusion discovery-thinking low
@@ -318,6 +322,7 @@ pi --fusion-enabled
 pi --fusion-disabled
 pi --fusion-preset cheap-planners
 pi --fusion-workers 3
+pi --fusion-planner-tools all
 pi --fusion-discovery-model anthropic/claude-haiku-4-5
 pi --fusion-discovery-thinking low
 pi --fusion-worker-model google/gemini-3.5-flash
@@ -333,7 +338,8 @@ Fusion is off by default. Use `--fusion-enabled` to start with the next eligible
 `--fusion-disabled` forces it off. After a fused turn starts, `pi-fusion` automatically disarms
 itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use
 `--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at
-startup.
+startup. Planner subprocesses get all tools by default; use `/fusion tools read-only` or
+`--fusion-planner-tools read-only` to restore the original narrow read/search/list tool set.
 
 ## What gets sent where
 
@@ -344,7 +350,7 @@ When fusion is armed, the next idle, non-command user input consumes that arm an
 - replaces discovery with live worker splits after discovery finishes;
 - starts standalone `pi` subprocesses in JSON print mode;
 - disables extensions in subprocesses with `--no-extensions` to avoid recursive fusion;
-- gives discovery only read/search/list tools: `read`, `grep`, `find`, `ls`;
+- gives discovery and workers either all normal tools (default) or only read/search/list tools (`read`, `grep`, `find`, `ls`);
 - gives query rewriting no tools;
 - injects shared discovery context into every worker prompt;
 - asks workers for concise planning markdown;
@@ -392,7 +398,7 @@ planning bundle lives in the per-turn system prompt and is regenerated each fuse
 - Malformed `fusion.json` files are ignored instead of crashing the extension; fix the JSON syntax if presets or prompts are missing unexpectedly.
 - Some providers hide reasoning streams, so a worker column may show no reasoning even with
   reasoning enabled.
-- Discovery and worker tool access is narrow by design: no `bash`, no `write`, no `edit`.
+- Discovery and worker tool access defaults to all tools. Use read-only planner tools for safer planning passes when you do not want subprocesses to run write-capable tools.
 - The current pipeline uses two LLM round trips before the actor turn. A lighter mode may exist
   later, but the explicit flow is better for testing right now.
 

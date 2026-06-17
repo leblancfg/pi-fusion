@@ -18,6 +18,7 @@ import {
   FUSION_TRACE_MESSAGE_TYPE,
   fusionStatusGlyph,
   getWorkerLens,
+  normalizePlannerToolMode,
   normalizeWorkerSlots,
   parsePromptVariations,
   resolveSettings,
@@ -64,7 +65,7 @@ interface RunWorkerInput {
   timeoutMs: number;
   model: string | undefined;
   thinkingLevel: string | undefined;
-  tools?: string[] | "none";
+  tools?: string[] | "none" | "all";
   signal?: AbortSignal;
   onLiveUpdate?: (index: number, patch: Partial<Omit<FusionLiveWorkerState, "index">>) => void;
 }
@@ -107,6 +108,10 @@ function currentModelSpec(ctx: ExtensionContext): string | undefined {
   return `${ctx.model.provider}/${ctx.model.id}`;
 }
 
+function plannerToolsForMode(settings: FusionSettings): string[] | "all" {
+  return settings.plannerToolMode === "all" ? "all" : ["read", "grep", "find", "ls"];
+}
+
 async function writePromptFile(index: number, prompt: string): Promise<{ dir: string; file: string }> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-fusion-"));
   const file = path.join(dir, `worker-${index + 1}.md`);
@@ -138,7 +143,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
   try {
     const args = ["--mode", "json", "-p", "--no-session", "--no-extensions"];
     if (input.tools === "none") args.push("--no-tools");
-    else args.push("--tools", (input.tools ?? ["read", "grep", "find", "ls"]).join(","));
+    else if (input.tools !== "all") args.push("--tools", (input.tools ?? ["read", "grep", "find", "ls"]).join(","));
     if (input.model) args.push("--model", input.model);
     if (input.thinkingLevel) args.push("--thinking", input.thinkingLevel);
     args.push(`@${tmp.file}`);
@@ -296,6 +301,7 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-discovery-thinking": pi.getFlag("fusion-discovery-thinking"),
     "fusion-worker-thinking": pi.getFlag("fusion-worker-thinking"),
     "fusion-synthesizer-thinking": pi.getFlag("fusion-synthesizer-thinking"),
+    "fusion-planner-tools": pi.getFlag("fusion-planner-tools"),
     "fusion-preset": pi.getFlag("fusion-preset"),
   };
   return resolveSettings(flags, persisted);
@@ -316,6 +322,7 @@ function settingsSummary(settings: FusionSettings): string {
     `workerThinking=${settings.workerThinking ?? "current"}`,
     `synthesizerModel=${settings.synthesizerModel ?? "current"}`,
     `synthesizerThinking=${settings.synthesizerThinking ?? "current"}`,
+    `plannerTools=${settings.plannerToolMode}`,
     `preset=${settings.preset ?? "none"}`,
   ].join(" ");
 }
@@ -424,6 +431,11 @@ export default function piFusion(pi: ExtensionAPI): void {
     type: "string",
     default: "current",
   });
+  pi.registerFlag("fusion-planner-tools", {
+    description: "Tool access for discovery and planner workers: all/read-only (default all)",
+    type: "string",
+    default: DEFAULT_SETTINGS.plannerToolMode,
+  });
   pi.registerFlag("fusion-preset", {
     description: "Load a named pi-fusion preset from ~/.pi/agent/fusion.json or .pi/fusion.json",
     type: "string",
@@ -524,6 +536,8 @@ export default function piFusion(pi: ExtensionAPI): void {
       else if (command === "off") settings.enabled = false;
       else if (command === "discovery") settings.discoveryEnabled = value.toLowerCase() !== "off";
       else if (command === "rewrite") settings.rewriteEnabled = value.toLowerCase() !== "off";
+      else if (command === "tools" || command === "planner-tools")
+        settings.plannerToolMode = normalizePlannerToolMode(value, settings.plannerToolMode);
       else if (command === "workers") {
         settings.workerCount = resolveSettings({ "fusion-workers": value }, settings).workerCount;
         settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
@@ -551,7 +565,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         if (!ok) return;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|tools all|read-only|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesizer-model SPEC|synthesizer-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
           "info",
         );
         return;
@@ -634,6 +648,7 @@ export default function piFusion(pi: ExtensionAPI): void {
             task,
             recentContext,
             cwd: ctx.cwd,
+            plannerToolMode: settings.plannerToolMode,
             template: prompts.discovery,
           }),
           cwd: ctx.cwd,
@@ -642,7 +657,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           timeoutMs: settings.timeoutMs,
           model: discoveryModel,
           thinkingLevel: discoveryThinking,
-          tools: ["read", "grep", "find", "ls"],
+          tools: plannerToolsForMode(settings),
           signal: abort.signal,
           onLiveUpdate: (_index, patch) => activePanel?.update(0, patch),
         });
@@ -683,6 +698,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           discoveryContext,
           cwd: ctx.cwd,
           lens,
+          plannerToolMode: settings.plannerToolMode,
           template: prompts.worker,
         });
         activePanel?.update(index, { status: "running" });
@@ -694,7 +710,7 @@ export default function piFusion(pi: ExtensionAPI): void {
           timeoutMs: settings.timeoutMs,
           model: resolveWorkerModel(settings, index, currentModel),
           thinkingLevel: resolveWorkerThinking(settings, index, pi.getThinkingLevel()),
-          tools: ["read", "grep", "find", "ls"],
+          tools: plannerToolsForMode(settings),
           signal: abort.signal,
           onLiveUpdate: (workerIndex, patch) => activePanel?.update(workerIndex, patch),
         });

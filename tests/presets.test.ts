@@ -27,6 +27,7 @@ describe("fusion presets", () => {
         synthesizerModel: "anthropic/claude-sonnet-4-5",
         workerThinking: "off",
         synthesizerThinking: "high",
+        plannerToolMode: "read-only",
       },
     );
 
@@ -52,6 +53,7 @@ describe("fusion presets", () => {
     assert.equal(applied.synthesizerModel, "anthropic/claude-sonnet-4-5");
     assert.equal(applied.workerThinking, "off");
     assert.equal(applied.synthesizerThinking, "high");
+    assert.equal(applied.plannerToolMode, "read-only");
 
     assert.equal(await deleteFusionPreset(cwd, name, "project"), true);
     assert.equal(findFusionPreset(await loadFusionPresets(cwd), name), undefined);
@@ -132,6 +134,14 @@ describe("fusion presets", () => {
       process.env.PI_CODING_AGENT_DIR = originalCodingAgentDir;
       await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
     }
+  });
+
+  it("backfills older presets with the default planner tool mode", async () => {
+    const current = resolveSettings({}, { plannerToolMode: "read-only" });
+    const applied = applyFusionPresetSettings(current, "legacy", { settings: { workerCount: 2 } });
+
+    assert.equal(applied.workerCount, 2);
+    assert.equal(applied.plannerToolMode, "all");
   });
 
   it("resolves project presets from ancestor project roots", async () => {

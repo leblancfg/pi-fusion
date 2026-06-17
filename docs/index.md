@@ -2,8 +2,8 @@
 layout: default
 title: pi-fusion
 heading: pi-fusion
-lead: A compound-AI planning pass for pi. Several read-only model calls explore your task in parallel, then merge into one actor turn.
-description: pi-fusion is a compound AI planning fanout for pi: parallel read-only model calls, optional discovery, prompt rewrites, and one final actor response.
+lead: A compound-AI planning pass for pi. Several model calls explore your task in parallel, then merge into one actor turn.
+description: pi-fusion is a compound AI planning fanout for pi: parallel model calls, optional discovery, prompt rewrites, configurable planner tools, and one final actor response.
 ---
 
 <div class="install" aria-label="Installation command">
@@ -11,7 +11,7 @@ description: pi-fusion is a compound AI planning fanout for pi: parallel read-on
 </div>
 
 <figure class="diagram">
-  <img src="{{ '/assets/fusion-map.svg' | relative_url }}" alt="Prompt flows into optional discovery and rewrite, then read-only workers, then one pi actor turn" />
+  <img src="{{ '/assets/fusion-map.svg' | relative_url }}" alt="Prompt flows into optional discovery and rewrite, then planner workers, then one pi actor turn" />
   <figcaption class="caption">Local pi subprocesses, not OpenRouter's hosted Fusion route. Discovery and rewrite are optional.</figcaption>
 </figure>
 
@@ -20,7 +20,7 @@ description: pi-fusion is a compound AI planning fanout for pi: parallel read-on
 <section class="grid" aria-label="How it works">
   <article class="card">
     <h2>What it does</h2>
-    <p>Read-only workers plan in parallel, then their notes are injected into the actor's system prompt for that turn only.</p>
+    <p>Workers plan in parallel with configurable tool access, then their notes are injected into the actor's system prompt for that turn only.</p>
   </article>
   <article class="card">
     <h2>Why bother</h2>
@@ -38,7 +38,7 @@ description: pi-fusion is a compound AI planning fanout for pi: parallel read-on
   <article class="card">
     <h2>Open settings</h2>
     <pre><code>/fusion</code></pre>
-    <p>Set worker count, pick models, and save/load your own presets from the TUI pane.</p>
+    <p>Set worker count, choose planner tool access, pick models, and save/load your own presets from the TUI pane.</p>
   </article>
   <article class="card">
     <h2>Run locally</h2>

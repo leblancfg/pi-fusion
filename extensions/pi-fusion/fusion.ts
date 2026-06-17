@@ -2,8 +2,10 @@ export const ACTOR_PROMPT_MARKER = "<!-- pi-fusion:actor-prompt -->";
 
 export type FusionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 export type FusionThinkingChoice = "current" | FusionThinkingLevel;
+export type FusionPlannerToolMode = "all" | "read-only";
 
 export const THINKING_CHOICES: FusionThinkingChoice[] = ["current", "off", "minimal", "low", "medium", "high", "xhigh"];
+export const PLANNER_TOOL_MODES: FusionPlannerToolMode[] = ["all", "read-only"];
 
 export interface FusionWorker {
   model: string | undefined;
@@ -25,6 +27,7 @@ export interface FusionSettings {
   discoveryThinking: FusionThinkingLevel | undefined;
   workerThinking: FusionThinkingLevel | undefined;
   synthesizerThinking: FusionThinkingLevel | undefined;
+  plannerToolMode: FusionPlannerToolMode;
   preset?: string;
 }
 
@@ -48,6 +51,7 @@ export interface FusionFlags {
   "fusion-discovery-thinking"?: boolean | string;
   "fusion-worker-thinking"?: boolean | string;
   "fusion-synthesizer-thinking"?: boolean | string;
+  "fusion-planner-tools"?: boolean | string;
   "fusion-preset"?: boolean | string;
 }
 
@@ -130,6 +134,7 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   discoveryThinking: undefined,
   workerThinking: undefined,
   synthesizerThinking: undefined,
+  plannerToolMode: "all",
   preset: undefined,
 };
 
@@ -152,6 +157,14 @@ export function normalizeThinkingChoice(value: unknown): FusionThinkingLevel | u
   const trimmed = value.trim();
   if (!trimmed || trimmed === "current" || trimmed === "default") return undefined;
   return THINKING_CHOICES.includes(trimmed as FusionThinkingChoice) && trimmed !== "current" ? (trimmed as FusionThinkingLevel) : undefined;
+}
+
+export function normalizePlannerToolMode(value: unknown, fallback: FusionPlannerToolMode = DEFAULT_SETTINGS.plannerToolMode): FusionPlannerToolMode {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  if (normalized === "readonly" || normalized === "read-only") return "read-only";
+  if (normalized === "all") return "all";
+  return fallback;
 }
 
 export function normalizeWorkerSlots(workers: FusionWorker[] | undefined, count: number): FusionWorker[] {
@@ -201,6 +214,10 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
   // Discovery and rewrite are on by default; --fusion-no-discovery/--fusion-no-rewrite turn them off.
   settings.discoveryEnabled = persisted?.discoveryEnabled ?? flags["fusion-no-discovery"] !== true;
   settings.rewriteEnabled = persisted?.rewriteEnabled ?? flags["fusion-no-rewrite"] !== true;
+  settings.plannerToolMode = normalizePlannerToolMode(settings.plannerToolMode);
+  if (flags["fusion-planner-tools"] !== undefined) {
+    settings.plannerToolMode = normalizePlannerToolMode(flags["fusion-planner-tools"], settings.plannerToolMode);
+  }
   if (flags["fusion-workers"] !== undefined) {
     settings.workerCount = parsePositiveInteger(flags["fusion-workers"], settings.workerCount, { min: 1, max: 8 });
   } else {
@@ -237,6 +254,7 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
   settings.discoveryThinking = normalizeThinkingChoice(settings.discoveryThinking);
   settings.workerThinking = normalizeThinkingChoice(settings.workerThinking);
   settings.synthesizerThinking = normalizeThinkingChoice(settings.synthesizerThinking);
+  settings.plannerToolMode = normalizePlannerToolMode(settings.plannerToolMode);
   settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
 
   return settings;
@@ -439,9 +457,11 @@ export interface FusionPrompts {
 export const DEFAULT_PROMPTS: FusionPrompts = {
   discovery: `You are the discovery agent in an LLM Fusion pipeline.
 
-Your only job is to load context for the rest of the team. Spend read/search/list tool calls to surface the files, symbols, APIs, commands, and snippets that look relevant to the request, so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
+Your only job is to load context for the rest of the team. Spend tool calls to surface the files, symbols, APIs, commands, and snippets that look relevant to the request, so downstream workers and the synthesizer can work from shared context instead of repeating your exploration.
 
-This is a mechanical gathering step, not an analysis step. Do not answer the user's request, solve the problem, plan an implementation, assess or rank relevance, judge quality, or make any recommendation. Do not offer opinions or conclusions of any kind — they would bias the workers. Do not edit files. When you have gathered the context, stop.
+This is a mechanical gathering step, not an analysis step. Do not answer the user's request, solve the problem, plan an implementation, assess or rank relevance, judge quality, or make any recommendation. Do not offer opinions or conclusions of any kind — they would bias the workers. When you have gathered the context, stop.
+
+{{toolGuidance}}
 
 Working directory: {{cwd}}
 
@@ -472,7 +492,7 @@ Return only a JSON array of {{workerCount}} strings. No markdown, no explanation
 
   worker: `{{discoveryContext}}You are worker {{workerName}} in an LLM Fusion planning pass.
 
-Your job is to think and investigate before the main actor acts. You are read-only: do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes. {{discoveryGuidance}}
+Your job is to think and investigate before the main actor acts. {{toolGuidance}} {{discoveryGuidance}}
 
 Working directory: {{cwd}}
 
@@ -498,7 +518,7 @@ Keep the result useful for a downstream actor. Do not implement anything.`,
   actor: `<!-- pi-fusion:actor-prompt -->
 {{discoveryContext}}# LLM Fusion planning bundle
 
-A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and read-only workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.{{imageNote}}
+A discovery agent gathered the shared context above, a query-rewrite pass generated worker prompts, and workers independently explored/planned. Synthesize their advice, verify anything important yourself, then act on the original request using your available tools. Treat all subagent output as advisory, not authoritative.{{imageNote}}
 
 ## Original user request
 
@@ -527,7 +547,23 @@ export function renderTemplate(template: string, variables: Record<string, strin
   return result;
 }
 
-export function buildDiscoveryPrompt(input: { task: string; recentContext: string; cwd: string; template?: string }): string {
+function plannerToolGuidance(mode: FusionPlannerToolMode, role: "discovery" | "worker"): string {
+  if (mode === "read-only") {
+    return role === "discovery"
+      ? "Tool access: read-only tools only. Do not modify files, run write-capable commands, or ask for approval to make changes."
+      : "Tool access: read-only tools only. Do not modify files, do not propose tool calls that write files, and do not ask the user to approve changes.";
+  }
+
+  return "Tool access: all available tools. Use them when they help investigation, but keep the result useful for the downstream actor and avoid unnecessary changes.";
+}
+
+export function buildDiscoveryPrompt(input: {
+  task: string;
+  recentContext: string;
+  cwd: string;
+  plannerToolMode?: FusionPlannerToolMode;
+  template?: string;
+}): string {
   const templateStr = input.template ?? DEFAULT_PROMPTS.discovery;
   const contextSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
 
@@ -535,6 +571,7 @@ export function buildDiscoveryPrompt(input: { task: string; recentContext: strin
     cwd: input.cwd,
     recentContext: contextSection,
     task: input.task.trim(),
+    toolGuidance: plannerToolGuidance(input.plannerToolMode ?? DEFAULT_SETTINGS.plannerToolMode, "discovery"),
   });
 }
 
@@ -585,19 +622,26 @@ export function buildWorkerPrompt(input: {
   discoveryContext: string;
   cwd: string;
   lens: WorkerLens;
+  plannerToolMode?: FusionPlannerToolMode;
   template?: string;
 }): string {
   const templateStr = input.template ?? DEFAULT_PROMPTS.worker;
   const discoverySection = input.discoveryContext.trim() ? `## Shared discovery context\n\n${input.discoveryContext.trim()}\n\n` : "";
   const recentSection = input.recentContext.trim() ? `## Recent conversation context (truncated)\n\n${input.recentContext.trim()}\n\n` : "";
+  const readOnly = (input.plannerToolMode ?? DEFAULT_SETTINGS.plannerToolMode) === "read-only";
   const discoveryGuidance = input.discoveryContext.trim()
-    ? "The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present."
-    : "Investigate with read/search tools as needed before planning.";
+    ? readOnly
+      ? "The shared discovery context above is loaded for you; use it before making tool calls. Only read/search more when it adds missing information, verifies uncertainty, or inspects files not already present."
+      : "The shared discovery context above is loaded for you; use it before making tool calls. Only use more tools when it adds missing information, verifies uncertainty, or inspects context not already present."
+    : readOnly
+      ? "Investigate with read/search tools as needed before planning."
+      : "Investigate with available tools as needed before planning.";
 
   return renderTemplate(templateStr, {
     discoveryContext: discoverySection,
     workerName: input.lens.name,
     discoveryGuidance,
+    toolGuidance: plannerToolGuidance(input.plannerToolMode ?? DEFAULT_SETTINGS.plannerToolMode, "worker"),
     cwd: input.cwd,
     recentContext: recentSection,
     task: input.task.trim(),
