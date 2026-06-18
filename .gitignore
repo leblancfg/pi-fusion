@@ -2,5 +2,8 @@ node_modules/
 dist/
 coverage/
 _site/
+.jekyll-cache/
+.jekyll-metadata
+docs/Gemfile.lock
 .DS_Store
 *.log

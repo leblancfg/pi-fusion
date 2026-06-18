@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="480" viewBox="0 0 1080 480" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="506" viewBox="0 0 1080 506" role="img" aria-labelledby="title desc">
   <title id="title">pi-fusion planning flow</title>
   <desc id="desc">A prompt fans out to optional discovery and rewrite, then parallel workers, then one synthesis turn.</desc>
   <style>
@@ -12,7 +12,7 @@
     .edgeFaint { fill: none; stroke: #0E481F; stroke-width: 1.5; stroke-linecap: round; opacity: 0.32; }
   </style>
 
-  <rect width="1080" height="480" fill="#ECEBE6"/>
+  <rect width="1080" height="506" fill="#ECEBE6"/>
 
   <!-- prompt -> discovery / rewrite -->
   <path class="edge" d="M540 96 C540 123, 398 123, 398 150"/>
@@ -37,12 +37,12 @@
 
   <!-- discovery (light green outline) -->
   <rect x="268" y="150" width="260" height="64" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
-  <text x="398" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Discovery</text>
+  <text x="398" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Discovery<tspan font-size="15" dy="-7">*</tspan></text>
   <text x="398" y="202" text-anchor="middle" class="outlineSub">loads context once</text>
 
   <!-- rewrite (light green outline) -->
   <rect x="552" y="150" width="260" height="64" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
-  <text x="682" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Prompt rewrite</text>
+  <text x="682" y="182" text-anchor="middle" class="outlineTitle" font-size="22">Prompt rewrite<tspan font-size="15" dy="-7">*</tspan></text>
   <text x="682" y="202" text-anchor="middle" class="outlineSub">varies the angle</text>
 
   <!-- workers -->
@@ -61,4 +61,7 @@
   <!-- synthesis -->
   <rect x="360" y="416" width="360" height="48" rx="12" fill="#0E481F"/>
   <text x="540" y="446" text-anchor="middle" class="blockTitle" font-size="22">Synthesis · one final answer</text>
+
+  <!-- footnote -->
+  <text x="540" y="492" text-anchor="middle" font-family="'Inter', system-ui, -apple-system, sans-serif" font-size="14" font-weight="500" fill="#8B8F86">* Optional step</text>
 </svg>

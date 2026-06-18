@@ -31,9 +31,16 @@
   <body>
     <main>
       <header class="site-header">
-        <a class="brand-mark" href="{{ '/' | relative_url }}" aria-label="pi-fusion home">
-          <span class="brand-orbit" aria-hidden="true">∪</span>
-        </a>
+        <div class="header-top">
+          <a class="brand-mark" href="{{ '/' | relative_url }}" aria-label="pi-fusion home">
+            <span class="brand-orbit" aria-hidden="true">∪</span>
+          </a>
+          <nav class="social" aria-label="Project links">
+            <a class="social-link" href="https://github.com/leblancfg/pi-fusion">Github</a>
+            <a class="social-link" href="https://www.npmjs.com/package/@leblancfg/pi-fusion">npm</a>
+            <a class="social-link" href="https://pi.dev/packages/@leblancfg/pi-fusion">pi.dev</a>
+          </nav>
+        </div>
         <p class="eyebrow">pi extension</p>
         <h1>{{ page.heading | default: page.title | default: site.title }}</h1>
         {% if page.lead %}
@@ -42,8 +49,6 @@
         <nav class="actions" aria-label="Site navigation">
           <a class="button{% if page.url == '/' %} primary{% endif %}" href="{{ '/' | relative_url }}">Overview</a>
           <a class="button{% if page.url == '/presets/' %} primary{% endif %}" href="{{ '/presets/' | relative_url }}">Presets & Prompts</a>
-          <a class="button" href="https://github.com/leblancfg/pi-fusion">Source</a>
-          <a class="button" href="https://pi.dev/packages/@leblancfg/pi-fusion">pi package</a>
         </nav>
       </header>
 

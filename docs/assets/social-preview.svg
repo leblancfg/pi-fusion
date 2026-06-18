@@ -50,12 +50,12 @@
 
   <!-- discovery (light green outline) -->
   <rect x="728" y="260" width="260" height="72" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
-  <text x="858" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Discovery</text>
+  <text x="858" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Discovery<tspan font-size="17" dy="-9">*</tspan></text>
   <text x="858" y="320" text-anchor="middle" class="outlineSub">loads context once</text>
 
   <!-- rewrite (outline) -->
   <rect x="1012" y="260" width="260" height="72" rx="12" fill="rgba(14,72,31,0.09)" stroke="#0E481F" stroke-width="2.5"/>
-  <text x="1142" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Prompt rewrite</text>
+  <text x="1142" y="298" text-anchor="middle" class="outlineTitle" font-size="26">Prompt rewrite<tspan font-size="17" dy="-9">*</tspan></text>
   <text x="1142" y="320" text-anchor="middle" class="outlineSub">varies the angle</text>
 
   <!-- workers -->
@@ -74,6 +74,9 @@
   <!-- synthesis -->
   <rect x="760" y="540" width="480" height="60" rx="12" fill="#0E481F"/>
   <text x="1000" y="578" text-anchor="middle" class="blockTitle" font-size="26">Synthesis · one final answer</text>
+
+  <!-- footnote -->
+  <text x="1000" y="626" text-anchor="middle" font-size="18" font-weight="500" fill="#8B8F86">* Optional step</text>
 
   <!-- logo bottom-left -->
   <circle cx="100" cy="556" r="22" fill="none" stroke="#0E481F" stroke-width="4.5"/>

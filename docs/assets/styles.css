@@ -57,13 +57,45 @@ main {
   margin-bottom: 48px;
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.social {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.social-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+}
+
+.social-link:hover {
+  text-decoration: none;
+  background: var(--accent-soft);
+}
+
 .brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 54px;
   height: 54px;
-  margin-bottom: 22px;
   border: 3px solid var(--accent);
   border-radius: 999px;
   color: var(--accent);
@@ -180,6 +212,7 @@ h3 {
 .diagram {
   margin: 40px 0 0;
   padding: 28px 24px;
+  margin-bottom: 24px;
 }
 
 .diagram img {
