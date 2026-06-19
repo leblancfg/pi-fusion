@@ -22,6 +22,7 @@ export interface FusionSettings {
   workers: FusionWorker[];
   workerOutputBytes: number;
   contextBytes: number;
+  resumeContextBytes: number;
   timeoutMs: number;
   discoveryModel: string | undefined;
   workerModel: string | undefined;
@@ -48,6 +49,7 @@ export interface FusionFlags {
   "fusion-workers"?: boolean | string;
   "fusion-output-bytes"?: boolean | string;
   "fusion-context-bytes"?: boolean | string;
+  "fusion-resume-bytes"?: boolean | string;
   "fusion-timeout-ms"?: boolean | string;
   "fusion-model"?: boolean | string;
   "fusion-discovery-model"?: boolean | string;
@@ -107,6 +109,12 @@ export interface FusionTraceDetails {
   discovery?: FusionTraceResult;
   rewrite?: FusionTraceResult;
   workers: FusionTraceResult[];
+  /** Run id linking this trace to its full archive entries (if archived). */
+  runId?: string;
+  /** Number of archive chunk entries persisted for this run. */
+  archiveChunks?: number;
+  /** Total byte size of the full archive transcript. */
+  archiveBytes?: number;
 }
 
 export interface FusionTraceMessage {
@@ -132,6 +140,7 @@ export const DEFAULT_SETTINGS: FusionSettings = {
   workers: [],
   workerOutputBytes: 12_000,
   contextBytes: 16_000,
+  resumeContextBytes: 8_000,
   timeoutMs: 600_000,
   discoveryModel: undefined,
   workerModel: undefined,
@@ -239,6 +248,10 @@ export function resolveSettings(flags: FusionFlags = {}, persisted?: PersistedFu
     min: 0,
     max: 64_000,
   });
+  settings.resumeContextBytes = parsePositiveInteger(flags["fusion-resume-bytes"], settings.resumeContextBytes, {
+    min: 0,
+    max: 64_000,
+  });
   settings.timeoutMs = parsePositiveInteger(flags["fusion-timeout-ms"], settings.timeoutMs, {
     min: 5_000,
     max: 3_600_000,
@@ -297,12 +310,20 @@ export function truncateUtf8(input: string, maxBytes: number): string {
   return `${input.slice(0, low)}\n\n[pi-fusion truncated ${omitted} bytes]`;
 }
 
-const TRACE_TASK_BYTES = 4_000;
-const TRACE_PROMPT_BYTES = 4_000;
-const TRACE_REASONING_BYTES = 8_000;
-const TRACE_OUTPUT_BYTES = 16_000;
-const TRACE_TOOL_CONTEXT_BYTES = 16_000;
-const TRACE_STDERR_BYTES = 4_000;
+// Preview budgets for the in-context custom_message details. These are bounded
+// on purpose: the full, untruncated transcript lives in the archive entries
+// (see buildFusionArchive), not here. A budget of 0 omits the section.
+const TRACE_TASK_BYTES = 2_000;
+const TRACE_PROMPT_BYTES = 1_000;
+const TRACE_REASONING_BYTES = 0;
+const TRACE_OUTPUT_BYTES = 2_000;
+const TRACE_TOOL_CONTEXT_BYTES = 0;
+const TRACE_STDERR_BYTES = 1_000;
+
+function preview(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  return truncateUtf8(text.trim(), maxBytes);
+}
 
 function workerStatus(result: WorkerResult): string {
   if (result.ok) return "completed";
@@ -317,11 +338,11 @@ function traceResult(label: string, result: WorkerResult, prompt?: string): Fusi
     status: workerStatus(result),
     ok: result.ok,
     model: result.model,
-    prompt: prompt ? truncateUtf8(prompt.trim(), TRACE_PROMPT_BYTES) : undefined,
-    output: truncateUtf8(result.output.trim() || "(no output)", TRACE_OUTPUT_BYTES),
-    reasoning: truncateUtf8(result.reasoning.trim(), TRACE_REASONING_BYTES),
-    toolContext: truncateUtf8(result.toolContext.trim(), TRACE_TOOL_CONTEXT_BYTES),
-    stderr: truncateUtf8(result.stderr.trim(), TRACE_STDERR_BYTES),
+    prompt: prompt ? preview(prompt, TRACE_PROMPT_BYTES) : undefined,
+    output: preview(result.output || "(no output)", TRACE_OUTPUT_BYTES) || "(no output)",
+    reasoning: preview(result.reasoning, TRACE_REASONING_BYTES),
+    toolContext: preview(result.toolContext, TRACE_TOOL_CONTEXT_BYTES),
+    stderr: preview(result.stderr, TRACE_STDERR_BYTES),
     usage: result.usage,
   };
 }
@@ -356,6 +377,52 @@ function looksLikeFusionTraceDetails(details: unknown): details is FusionTraceDe
   return typeof candidate.task === "string" && Array.isArray(candidate.workers) && Array.isArray(candidate.promptVariations);
 }
 
+function discoveryStatusLabel(result?: WorkerResult): string {
+  if (!result) return "discovery skipped";
+  return result.ok ? "discovery completed" : `discovery ${workerStatus(result)}`;
+}
+
+function rewriteStatusLabel(result?: WorkerResult): string {
+  if (!result) return "rewrite skipped";
+  return result.ok ? "rewrite completed" : `rewrite ${workerStatus(result)}`;
+}
+
+/**
+ * Builds the model-visible handoff stored in custom_message.content.
+ *
+ * This is deliberately bounded by maxBytes: it is what resumed and subsequent
+ * turns see. The full, untruncated sub-agent transcript is archived separately
+ * via buildFusionArchive and is kept out of LLM context.
+ */
+export function buildResumeHandoff(input: {
+  runId?: string;
+  discoveryStatus: string;
+  rewriteStatus: string;
+  completedWorkers: number;
+  totalWorkers: number;
+  workerResults: WorkerResult[];
+  maxBytes: number;
+}): string {
+  const headline = `∪ pi-fusion transcript: ${input.discoveryStatus}; ${input.rewriteStatus}; ${input.completedWorkers}/${input.totalWorkers} workers completed.`;
+  const pointer = input.runId
+    ? `Parallel sub-agents produced this answer. Their full transcripts are archived in this pi session (run ${input.runId}) and are intentionally kept out of context. Run \`/fusion-transcript ${input.runId}\` to inspect them.`
+    : "Parallel sub-agents produced this answer; their full transcripts are kept out of context.";
+
+  if (input.maxBytes <= 0 || input.workerResults.length === 0) {
+    return `${headline}\n\n${pointer}`;
+  }
+
+  const conclusions = input.workerResults
+    .map((result, index) => {
+      const status = result.ok ? "" : ` (${workerStatus(result)})`;
+      const body = result.output.trim() || "(no output)";
+      return `### worker ${index + 1}: ${result.lens}${status}\n${body}`;
+    })
+    .join("\n\n");
+  const bounded = truncateUtf8(conclusions, input.maxBytes);
+  return `${headline}\n\n${pointer}\n\n## Worker conclusions\n${bounded}`;
+}
+
 export function buildFusionTraceMessage(input: {
   task: string;
   discoveryEnabled: boolean;
@@ -364,22 +431,26 @@ export function buildFusionTraceMessage(input: {
   discoveryResult?: WorkerResult;
   rewriteResult?: WorkerResult;
   workerResults: WorkerResult[];
+  runId?: string;
+  archiveChunks?: number;
+  archiveBytes?: number;
+  resumeContextBytes?: number;
 }): FusionTraceMessage {
   const completedWorkers = input.workerResults.filter((result) => result.ok).length;
-  const discoveryStatus = input.discoveryResult
-    ? input.discoveryResult.ok
-      ? "discovery completed"
-      : `discovery ${workerStatus(input.discoveryResult)}`
-    : "discovery skipped";
-  const rewriteStatus = input.rewriteResult
-    ? input.rewriteResult.ok
-      ? "rewrite completed"
-      : `rewrite ${workerStatus(input.rewriteResult)}`
-    : "rewrite skipped";
+  const discoveryStatus = discoveryStatusLabel(input.discoveryResult);
+  const rewriteStatus = rewriteStatusLabel(input.rewriteResult);
 
   return {
     customType: FUSION_TRACE_MESSAGE_TYPE,
-    content: `∪ pi-fusion transcript: ${discoveryStatus}; ${rewriteStatus}; ${completedWorkers}/${input.workerResults.length} workers completed. Expand for planner output.`,
+    content: buildResumeHandoff({
+      runId: input.runId,
+      discoveryStatus,
+      rewriteStatus,
+      completedWorkers,
+      totalWorkers: input.workerResults.length,
+      workerResults: input.workerResults,
+      maxBytes: input.resumeContextBytes ?? DEFAULT_SETTINGS.resumeContextBytes,
+    }),
     display: true,
     details: {
       task: truncateUtf8(input.task.trim(), TRACE_TASK_BYTES),
@@ -389,6 +460,9 @@ export function buildFusionTraceMessage(input: {
       discovery: input.discoveryResult ? traceResult("discovery", input.discoveryResult) : undefined,
       rewrite: input.rewriteResult ? traceResult("rewrite", input.rewriteResult) : undefined,
       workers: input.workerResults.map((result, index) => traceResult(`worker ${index + 1}: ${result.lens}`, result, input.promptVariations[index])),
+      runId: input.runId,
+      archiveChunks: input.archiveChunks,
+      archiveBytes: input.archiveBytes,
     },
   };
 }
@@ -399,9 +473,14 @@ export function formatFusionTraceDetails(details: unknown): string {
     ? `## worker prompt variations\n${details.promptVariations.map((prompt, index) => `${index + 1}. ${prompt}`).join("\n\n")}`
     : "";
 
+  const archiveNote = details.runId
+    ? `Previews below are truncated. Full untruncated transcript archived in this session (run ${details.runId}, ${details.archiveChunks ?? 0} chunk(s), ${details.archiveBytes ?? 0} bytes). Run \`/fusion-transcript ${details.runId}\` for the complete archive.`
+    : "Previews below are truncated.";
+
   return [
     "# pi-fusion transcript",
     `discovery: ${details.discoveryEnabled ? "on" : "off"} • rewrite: ${details.rewriteEnabled ? "on" : "off"} • workers: ${details.workers.length}`,
+    archiveNote,
     `\n## original request\n${details.task || "(empty)"}`,
     prompts,
     details.discovery ? formatTraceResult(details.discovery) : "",
@@ -410,6 +489,228 @@ export function formatFusionTraceDetails(details: unknown): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** First line of a handoff/trace content string, for compact (collapsed) rendering. */
+export function fusionTraceHeadline(content: string): string {
+  return content.split("\n", 1)[0] ?? content;
+}
+
+// =============================================================================
+// Archive: full sub-agent transcripts persisted as non-context `custom` entries.
+//
+// The archive is the durable, auditable record of everything the discovery,
+// rewrite, and worker sub-agents produced. It is stored as session `custom`
+// entries (FUSION_ARCHIVE_ENTRY_TYPE) which pi's buildSessionContext() never
+// feeds to the LLM, so it can be full-fidelity without inflating context.
+// The transcript is chunked only to keep individual session lines reasonable;
+// chunking is byte-exact and reversible, never a semantic truncation.
+// =============================================================================
+
+export const FUSION_ARCHIVE_ENTRY_TYPE = "pi-fusion-archive";
+export const FUSION_ARCHIVE_SCHEMA = "pi-fusion.archive.v1";
+export const FUSION_ARCHIVE_CHUNK_BYTES = 48_000;
+
+export interface FusionArchiveManifest {
+  schema: typeof FUSION_ARCHIVE_SCHEMA;
+  kind: "manifest";
+  runId: string;
+  createdAt: string;
+  task: string;
+  discoveryEnabled: boolean;
+  rewriteEnabled: boolean;
+  workerCount: number;
+  completedWorkers: number;
+  chunks: number;
+  bytes: number;
+}
+
+export interface FusionArchiveChunk {
+  schema: typeof FUSION_ARCHIVE_SCHEMA;
+  kind: "chunk";
+  runId: string;
+  index: number;
+  total: number;
+  content: string;
+}
+
+export type FusionArchiveEntry = FusionArchiveManifest | FusionArchiveChunk;
+
+export interface FusionArchiveInput {
+  runId: string;
+  createdAt?: string;
+  task: string;
+  discoveryEnabled: boolean;
+  rewriteEnabled: boolean;
+  promptVariations: string[];
+  discoveryResult?: WorkerResult;
+  rewriteResult?: WorkerResult;
+  workerResults: WorkerResult[];
+}
+
+/**
+ * Splits a string into chunks no larger than maxBytes (UTF-8), never splitting
+ * a multi-byte code point. join(chunkUtf8(s, n)) === s for any s.
+ */
+export function chunkUtf8(input: string, maxBytes: number): string[] {
+  if (maxBytes <= 0 || Buffer.byteLength(input, "utf8") <= maxBytes) return [input];
+  const chunks: string[] = [];
+  let rest = input;
+  while (Buffer.byteLength(rest, "utf8") > maxBytes) {
+    let low = 0;
+    let high = rest.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(rest.slice(0, mid), "utf8") <= maxBytes) low = mid;
+      else high = mid - 1;
+    }
+    const cut = Math.max(1, low);
+    chunks.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
+}
+
+function archiveSection(label: string, result: WorkerResult, prompt?: string): string {
+  return [
+    `## ${label}`,
+    formatTraceUsage(traceResultForArchive(label, result)),
+    prompt ? `\n### prompt\n${prompt.trim()}` : "",
+    result.reasoning.trim() ? `\n### reasoning\n${result.reasoning.trim()}` : "",
+    `\n### output\n${result.output.trim() || "(no output)"}`,
+    result.toolContext.trim() ? `\n### tool context\n${result.toolContext.trim()}` : "",
+    result.stderr.trim() ? `\n### stderr\n${result.stderr.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// Usage line reuses the trace formatter but must not truncate any payload.
+function traceResultForArchive(label: string, result: WorkerResult): FusionTraceResult {
+  return {
+    label,
+    lens: result.lens,
+    status: workerStatus(result),
+    ok: result.ok,
+    model: result.model,
+    output: result.output,
+    reasoning: result.reasoning,
+    toolContext: result.toolContext,
+    stderr: result.stderr,
+    usage: result.usage,
+  };
+}
+
+/** Renders the full, untruncated transcript for a fusion run as markdown. */
+export function buildFusionArchive(input: FusionArchiveInput): string {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const completedWorkers = input.workerResults.filter((result) => result.ok).length;
+  const variations = input.promptVariations.length
+    ? `## Worker prompt variations\n${input.promptVariations.map((prompt, index) => `${index + 1}. ${prompt.trim()}`).join("\n\n")}`
+    : "";
+
+  return [
+    `# pi-fusion run ${input.runId}`,
+    [
+      `- created: ${createdAt}`,
+      `- discovery: ${input.discoveryEnabled ? "on" : "off"} • rewrite: ${input.rewriteEnabled ? "on" : "off"}`,
+      `- workers: ${completedWorkers}/${input.workerResults.length} completed`,
+    ].join("\n"),
+    `## Original request\n${input.task.trim() || "(empty)"}`,
+    variations,
+    input.discoveryResult ? archiveSection("Discovery", input.discoveryResult) : "",
+    input.rewriteResult ? archiveSection("Rewrite", input.rewriteResult) : "",
+    ...input.workerResults.map((result, index) => archiveSection(`Worker ${index + 1}: ${result.lens}`, result, input.promptVariations[index])),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Builds the manifest + chunk payloads for persisting a run's full archive. */
+export function buildFusionArchiveEntries(input: FusionArchiveInput): {
+  manifest: FusionArchiveManifest;
+  chunks: FusionArchiveChunk[];
+} {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const transcript = buildFusionArchive({ ...input, createdAt });
+  const pieces = chunkUtf8(transcript, FUSION_ARCHIVE_CHUNK_BYTES);
+  const chunks: FusionArchiveChunk[] = pieces.map((content, index) => ({
+    schema: FUSION_ARCHIVE_SCHEMA,
+    kind: "chunk",
+    runId: input.runId,
+    index,
+    total: pieces.length,
+    content,
+  }));
+  const manifest: FusionArchiveManifest = {
+    schema: FUSION_ARCHIVE_SCHEMA,
+    kind: "manifest",
+    runId: input.runId,
+    createdAt,
+    task: input.task.trim(),
+    discoveryEnabled: input.discoveryEnabled,
+    rewriteEnabled: input.rewriteEnabled,
+    workerCount: input.workerResults.length,
+    completedWorkers: input.workerResults.filter((result) => result.ok).length,
+    chunks: pieces.length,
+    bytes: Buffer.byteLength(transcript, "utf8"),
+  };
+  return { manifest, chunks };
+}
+
+function asArchiveEntryData(entry: unknown): FusionArchiveEntry | undefined {
+  if (!entry || typeof entry !== "object") return undefined;
+  const candidate = entry as { type?: unknown; customType?: unknown; data?: unknown };
+  if (candidate.type !== "custom" || candidate.customType !== FUSION_ARCHIVE_ENTRY_TYPE) return undefined;
+  const data = candidate.data as Partial<FusionArchiveEntry> | undefined;
+  if (!data || typeof data !== "object" || data.schema !== FUSION_ARCHIVE_SCHEMA) return undefined;
+  if (data.kind !== "manifest" && data.kind !== "chunk") return undefined;
+  return data as FusionArchiveEntry;
+}
+
+/**
+ * Rebuilds a run's full transcript from session entries. Without runId, returns
+ * the most recent archived run. Returns undefined if no complete archive exists.
+ */
+export function reconstructFusionArchive(entries: unknown[], runId?: string): { manifest: FusionArchiveManifest; content: string } | undefined {
+  const manifests: FusionArchiveManifest[] = [];
+  const chunksByRun = new Map<string, FusionArchiveChunk[]>();
+  for (const entry of entries) {
+    const data = asArchiveEntryData(entry);
+    if (!data) continue;
+    if (data.kind === "manifest") {
+      manifests.push(data);
+    } else {
+      const list = chunksByRun.get(data.runId) ?? [];
+      list.push(data);
+      chunksByRun.set(data.runId, list);
+    }
+  }
+
+  const manifest = runId ? [...manifests].reverse().find((item) => item.runId === runId) : manifests[manifests.length - 1];
+  if (!manifest) return undefined;
+
+  const chunks = (chunksByRun.get(manifest.runId) ?? []).slice().sort((a, b) => a.index - b.index);
+  if (chunks.length === 0) return undefined;
+  const content = chunks.map((chunk) => chunk.content).join("");
+  return { manifest, content };
+}
+
+export function listFusionArchiveRuns(entries: unknown[]): FusionArchiveManifest[] {
+  const manifests: FusionArchiveManifest[] = [];
+  for (const entry of entries) {
+    const data = asArchiveEntryData(entry);
+    if (data?.kind === "manifest") manifests.push(data);
+  }
+  return manifests;
+}
+
+/** Stable, sortable run id, e.g. fusion-20260617-153012-a1b2c3. */
+export function createFusionRunId(now: Date = new Date()): string {
+  const stamp = now.toISOString().replace(/[-:T]/g, "").replace(/\..*$/, "");
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `fusion-${stamp.slice(0, 8)}-${stamp.slice(8, 14)}-${rand}`;
 }
 
 export function getWorkerLens(index: number): WorkerLens {

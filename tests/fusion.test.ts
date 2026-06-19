@@ -1,26 +1,37 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
+import { SessionManager, convertToLlm } from "@earendil-works/pi-coding-agent";
 import {
   SYNTHESIS_PROMPT_MARKER,
   LEGACY_SYNTHESIS_PROMPT_MARKER,
+  buildFusionArchive,
+  buildFusionArchiveEntries,
   buildSynthesisPrompt,
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
   buildRewritePrompt,
   buildWorkerPrompt,
+  chunkUtf8,
   collectRecentConversation,
   consumeNextTurnFusion,
+  createFusionRunId,
   formatFusionTraceDetails,
   formatToolEvent,
   fusionStatusGlyph,
   getWorkerLens,
+  listFusionArchiveRuns,
   normalizeWorkerSlots,
   parsePromptVariations,
+  reconstructFusionArchive,
   resolveSettings,
   resolveWorkerModel,
   resolveWorkerThinking,
   shouldBypassFusion,
   truncateUtf8,
+  FUSION_ARCHIVE_ENTRY_TYPE,
   FUSION_TRACE_MESSAGE_TYPE,
   type WorkerResult,
 } from "../extensions/pi-fusion/fusion.ts";
@@ -337,7 +348,7 @@ describe("prompts", () => {
 });
 
 describe("fusion trace", () => {
-  it("builds a visible custom message with expanded planner details outside content", () => {
+  it("puts a bounded handoff in content and a runId pointer to the archive", () => {
     const message = buildFusionTraceMessage({
       task: "Implement feature",
       discoveryEnabled: true,
@@ -346,33 +357,228 @@ describe("fusion trace", () => {
       discoveryResult: worker({ lens: "discovery", output: "loaded src/index.ts" }),
       rewriteResult: worker({ lens: "rewrite", output: '["Explore API", "Explore tests"]' }),
       workerResults: [worker({ index: 0, lens: "#1", output: "plan A" }), worker({ index: 1, lens: "#2", output: "plan B" })],
+      runId: "fusion-20260617-000000-abc123",
+      archiveChunks: 1,
+      archiveBytes: 4_096,
     });
 
     assert.equal(message.customType, FUSION_TRACE_MESSAGE_TYPE);
     assert.equal(message.display, true);
+    // The model-visible content carries the headline, an archive pointer, and bounded conclusions.
     assert.match(message.content, /pi-fusion transcript/);
-    assert.doesNotMatch(message.content, /plan A/);
+    assert.match(message.content, /plan A/);
+    assert.match(message.content, /\/fusion-transcript fusion-20260617-000000-abc123/);
+    assert.equal(message.details.runId, "fusion-20260617-000000-abc123");
     assert.equal(message.details.workers.length, 2);
 
     const expanded = formatFusionTraceDetails(message.details);
-    assert.match(expanded, /discovery/);
+    assert.match(expanded, /Full untruncated transcript archived/);
     assert.match(expanded, /Explore API/);
     assert.match(expanded, /plan A/);
-    assert.match(expanded, /tool context/);
   });
 
-  it("bounds large trace sections before persisting them", () => {
+  it("bounds the in-context handoff and detail previews regardless of worker size", () => {
     const message = buildFusionTraceMessage({
       task: "x".repeat(10_000),
       discoveryEnabled: false,
       rewriteEnabled: false,
       promptVariations: ["p".repeat(10_000)],
       workerResults: [worker({ output: "o".repeat(40_000), reasoning: "r".repeat(20_000), toolContext: "t".repeat(40_000) })],
+      resumeContextBytes: 8_000,
     });
 
+    // content is the LLM-visible handoff: bounded by resumeContextBytes (+ headline/pointer).
+    assert.ok(Buffer.byteLength(message.content, "utf8") < 9_000);
+    assert.match(message.content, /pi-fusion truncated/);
+
+    // details are previews only: small and never carry the full transcript.
     const expanded = formatFusionTraceDetails(message.details);
-    assert.match(expanded, /pi-fusion truncated/);
-    assert.ok(Buffer.byteLength(expanded, "utf8") < 60_000);
+    assert.ok(Buffer.byteLength(expanded, "utf8") < 12_000);
+  });
+});
+
+describe("fusion archive", () => {
+  it("chunks utf8 byte-exactly and reversibly", () => {
+    const text = "é".repeat(5_000) + "\nplan details\n" + "中".repeat(5_000);
+    const chunks = chunkUtf8(text, 4_000);
+    assert.ok(chunks.length > 1);
+    for (const chunk of chunks) assert.ok(Buffer.byteLength(chunk, "utf8") <= 4_000);
+    assert.equal(chunks.join(""), text);
+  });
+
+  it("archives the full untruncated transcript and reconstructs it byte-exactly", () => {
+    const runId = "fusion-20260617-000000-deadbe";
+    const input = {
+      runId,
+      createdAt: "2026-06-17T00:00:00.000Z",
+      task: "Implement feature",
+      discoveryEnabled: true,
+      rewriteEnabled: true,
+      promptVariations: ["Explore API", "Explore tests"],
+      discoveryResult: worker({ lens: "discovery", output: "loaded src/index.ts" }),
+      rewriteResult: worker({ lens: "rewrite", output: '["Explore API", "Explore tests"]' }),
+      workerResults: [
+        worker({ index: 0, lens: "#1", output: "FULL_WORKER_OUTPUT_" + "z".repeat(60_000), toolContext: "deep tool trace" }),
+        worker({ index: 1, lens: "#2", output: "plan B" }),
+      ],
+    };
+
+    const transcript = buildFusionArchive(input);
+    assert.match(transcript, /FULL_WORKER_OUTPUT_/);
+    assert.match(transcript, /deep tool trace/);
+    // No semantic truncation in the archive.
+    assert.doesNotMatch(transcript, /pi-fusion truncated/);
+
+    const { manifest, chunks } = buildFusionArchiveEntries(input);
+    assert.equal(manifest.runId, runId);
+    assert.equal(manifest.workerCount, 2);
+    assert.ok(chunks.length > 1);
+
+    const entries = [
+      { type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data: manifest },
+      ...chunks.map((data) => ({ type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data })),
+    ];
+    const restored = reconstructFusionArchive(entries);
+    assert.ok(restored);
+    assert.equal(restored.content, transcript);
+    assert.equal(restored.manifest.runId, runId);
+  });
+
+  it("selects the requested run and lists archived runs", () => {
+    const a = buildFusionArchiveEntries({
+      runId: "fusion-A",
+      task: "task A",
+      discoveryEnabled: false,
+      rewriteEnabled: false,
+      promptVariations: [],
+      workerResults: [worker({ output: "OUTPUT_A" })],
+    });
+    const b = buildFusionArchiveEntries({
+      runId: "fusion-B",
+      task: "task B",
+      discoveryEnabled: false,
+      rewriteEnabled: false,
+      promptVariations: [],
+      workerResults: [worker({ output: "OUTPUT_B" })],
+    });
+    const entries = [
+      { type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data: a.manifest },
+      ...a.chunks.map((data) => ({ type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data })),
+      { type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data: b.manifest },
+      ...b.chunks.map((data) => ({ type: "custom", customType: FUSION_ARCHIVE_ENTRY_TYPE, data })),
+    ];
+
+    assert.match(reconstructFusionArchive(entries, "fusion-A")!.content, /OUTPUT_A/);
+    assert.match(reconstructFusionArchive(entries, "fusion-B")!.content, /OUTPUT_B/);
+    // Default picks the most recent run.
+    assert.match(reconstructFusionArchive(entries)!.content, /OUTPUT_B/);
+    assert.equal(reconstructFusionArchive(entries, "missing"), undefined);
+    assert.deepEqual(
+      listFusionArchiveRuns(entries).map((m) => m.runId),
+      ["fusion-A", "fusion-B"],
+    );
+  });
+
+  it("generates sortable, unique run ids", () => {
+    const id = createFusionRunId(new Date("2026-06-17T15:30:12.000Z"));
+    assert.match(id, /^fusion-20260617-153012-[0-9a-z]{6}$/);
+    assert.notEqual(createFusionRunId(), createFusionRunId());
+  });
+});
+
+describe("session persistence (end-to-end)", () => {
+  // Drives a real on-disk pi session through a simulated fusion turn, then
+  // reloads it from JSONL and asserts the resume/audit contract:
+  //   - full sub-agent output is recoverable from the session file
+  //   - only the bounded handoff reaches the LLM on subsequent turns
+  it("archives full worker output out of context while exposing a bounded handoff", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-fusion-session-"));
+    const sm = SessionManager.create(dir, dir);
+    const sessionFile = sm.getSessionFile();
+    assert.ok(sessionFile);
+
+    const runId = createFusionRunId();
+    const workerResults = [
+      worker({ index: 0, lens: "#1", output: "SECRET_WORKER_OUTPUT plan A details", toolContext: "ARCHIVE_ONLY_TOOL_TRACE" }),
+      worker({ index: 1, lens: "#2", output: "plan B details" }),
+    ];
+
+    // 1. The user prompt that armed fusion.
+    sm.appendMessage({ role: "user", content: [{ type: "text", text: "Implement feature X" }], timestamp: Date.now() });
+
+    // 2. Persist the full archive as non-context custom entries (as runFusion does).
+    const archive = buildFusionArchiveEntries({
+      runId,
+      task: "Implement feature X",
+      discoveryEnabled: true,
+      rewriteEnabled: true,
+      promptVariations: ["Explore API", "Explore tests"],
+      discoveryResult: worker({ lens: "discovery", output: "DISCOVERY_ARCHIVE_ONLY context" }),
+      workerResults,
+    });
+    sm.appendCustomEntry(FUSION_ARCHIVE_ENTRY_TYPE, archive.manifest);
+    for (const chunk of archive.chunks) sm.appendCustomEntry(FUSION_ARCHIVE_ENTRY_TYPE, chunk);
+
+    // 3. The in-context handoff custom_message (as before_agent_start returns).
+    const trace = buildFusionTraceMessage({
+      task: "Implement feature X",
+      discoveryEnabled: true,
+      rewriteEnabled: true,
+      promptVariations: ["Explore API", "Explore tests"],
+      workerResults,
+      runId,
+      archiveChunks: archive.chunks.length,
+      archiveBytes: archive.manifest.bytes,
+      resumeContextBytes: 8_000,
+    });
+    sm.appendCustomMessageEntry(trace.customType, trace.content, trace.display, trace.details);
+
+    // 4. The synthesis answer.
+    sm.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Here is the synthesized plan." }],
+      api: "anthropic-messages",
+      provider: "test",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+
+    // Reload the session from disk, exactly like resuming.
+    const reopened = SessionManager.open(sessionFile!);
+    const entries = reopened.getEntries();
+
+    // The full transcript is recoverable from the saved file.
+    const restored = reconstructFusionArchive(entries, runId);
+    assert.ok(restored, "archive should be reconstructable from the reloaded session");
+    assert.match(restored.content, /SECRET_WORKER_OUTPUT/);
+    assert.match(restored.content, /ARCHIVE_ONLY_TOOL_TRACE/);
+    assert.match(restored.content, /DISCOVERY_ARCHIVE_ONLY/);
+
+    // What a resumed/subsequent model turn actually sees.
+    const llm = convertToLlm(reopened.buildSessionContext().messages);
+    const llmText = JSON.stringify(llm);
+    assert.match(llmText, /Implement feature X/);
+    assert.match(llmText, /Worker conclusions/);
+    assert.match(llmText, new RegExp(`/fusion-transcript ${runId}`));
+    // Raw archive-only content must NOT leak into LLM context.
+    assert.doesNotMatch(llmText, /ARCHIVE_ONLY_TOOL_TRACE/);
+    assert.doesNotMatch(llmText, /DISCOVERY_ARCHIVE_ONLY/);
+
+    // Archive entries live in the tree but are skipped by context building.
+    const archiveEntries = entries.filter(
+      (e) =>
+        (e as { type?: string; customType?: string }).type === "custom" && (e as { customType?: string }).customType === FUSION_ARCHIVE_ENTRY_TYPE,
+    );
+    assert.ok(archiveEntries.length >= 2);
   });
 });
 
