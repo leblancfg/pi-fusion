@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
+  buildFusionArchiveEntries,
   buildSynthesisPrompt,
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
@@ -12,10 +13,15 @@ import {
   buildWorkerPrompt,
   collectRecentConversation,
   consumeNextTurnFusion,
+  createFusionRunId,
   DEFAULT_SETTINGS,
   formatFusionTraceDetails,
   formatToolEvent,
+  fusionTraceHeadline,
+  FUSION_ARCHIVE_ENTRY_TYPE,
   FUSION_TRACE_MESSAGE_TYPE,
+  listFusionArchiveRuns,
+  reconstructFusionArchive,
   fusionStatusGlyph,
   getWorkerLens,
   normalizePlannerToolMode,
@@ -293,6 +299,7 @@ function settingsFromFlags(pi: ExtensionAPI, persisted?: PersistedFusionSettings
     "fusion-workers": pi.getFlag("fusion-workers"),
     "fusion-output-bytes": pi.getFlag("fusion-output-bytes"),
     "fusion-context-bytes": pi.getFlag("fusion-context-bytes"),
+    "fusion-resume-bytes": pi.getFlag("fusion-resume-bytes"),
     "fusion-timeout-ms": pi.getFlag("fusion-timeout-ms"),
     "fusion-model": pi.getFlag("fusion-model"),
     "fusion-discovery-model": pi.getFlag("fusion-discovery-model"),
@@ -315,6 +322,7 @@ function settingsSummary(settings: FusionSettings): string {
     `workers=${settings.workerCount}`,
     `workerOutputBytes=${settings.workerOutputBytes}`,
     `contextBytes=${settings.contextBytes}`,
+    `resumeContextBytes=${settings.resumeContextBytes}`,
     `timeoutMs=${settings.timeoutMs}`,
     `discoveryModel=${settings.discoveryModel ?? "current"}`,
     `discoveryThinking=${settings.discoveryThinking ?? "current"}`,
@@ -348,11 +356,13 @@ function buildSharedDiscoveryContext(result: WorkerResult): string {
 export default function piFusion(pi: ExtensionAPI): void {
   let settings: FusionSettings = { ...DEFAULT_SETTINGS };
   let armedForNextTurn = false;
+  let lastTranscriptRuns: ReturnType<typeof listFusionArchiveRuns> = [];
 
   pi.registerMessageRenderer(FUSION_TRACE_MESSAGE_TYPE, (message, { expanded }, theme) => {
+    const content = typeof message.content === "string" ? message.content : "";
     const body = expanded
       ? formatFusionTraceDetails(message.details)
-      : `${message.content}\n\n${theme.fg("dim", "Expand to show discovery, rewrite, and worker output.")}`;
+      : `${fusionTraceHeadline(content)}\n\n${theme.fg("dim", "Expand for previews; /fusion-transcript for the full archive.")}`;
     return new Text(body, 1, 1, (text) => theme.bg("customMessageBg", text));
   });
 
@@ -390,6 +400,11 @@ export default function piFusion(pi: ExtensionAPI): void {
     description: "Max bytes of recent conversation sent to each worker",
     type: "string",
     default: String(DEFAULT_SETTINGS.contextBytes),
+  });
+  pi.registerFlag("fusion-resume-bytes", {
+    description: "Max bytes of worker conclusions kept in context for resumed/subsequent turns",
+    type: "string",
+    default: String(DEFAULT_SETTINGS.resumeContextBytes),
   });
   pi.registerFlag("fusion-timeout-ms", {
     description: "Planner worker timeout in milliseconds",
@@ -543,6 +558,8 @@ export default function piFusion(pi: ExtensionAPI): void {
         settings.workers = normalizeWorkerSlots(settings.workers, settings.workerCount);
       } else if (command === "output") settings.workerOutputBytes = resolveSettings({ "fusion-output-bytes": value }, settings).workerOutputBytes;
       else if (command === "context") settings.contextBytes = resolveSettings({ "fusion-context-bytes": value }, settings).contextBytes;
+      else if (command === "resume" || command === "resume-bytes")
+        settings.resumeContextBytes = resolveSettings({ "fusion-resume-bytes": value }, settings).resumeContextBytes;
       else if (command === "timeout") settings.timeoutMs = resolveSettings({ "fusion-timeout-ms": value }, settings).timeoutMs;
       else if (command === "discovery-model") settings.discoveryModel = resolveSettings({ "fusion-discovery-model": value }, settings).discoveryModel;
       else if (command === "discovery-thinking" || command === "discovery-reasoning") {
@@ -560,7 +577,7 @@ export default function piFusion(pi: ExtensionAPI): void {
         if (!ok) return;
       } else {
         ctx.ui.notify(
-          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|tools all|read-only|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesis-model SPEC|synthesis-thinking LEVEL|output BYTES|context BYTES|timeout MS]",
+          "Usage: /fusion [ui|status|on|off|preset [list|save NAME|save-project NAME|NAME]|discovery on|off|rewrite on|off|tools all|read-only|workers N|discovery-model SPEC|discovery-thinking LEVEL|worker-model SPEC|worker-thinking LEVEL|synthesis-model SPEC|synthesis-thinking LEVEL|output BYTES|context BYTES|resume BYTES|timeout MS]",
           "info",
         );
         return;
@@ -569,6 +586,66 @@ export default function piFusion(pi: ExtensionAPI): void {
       persist();
       setFusionStatus(ctx, undefined);
       ctx.ui.notify(`pi-fusion ${settingsSummary(settings)}`, "info");
+    },
+  });
+
+  pi.registerCommand("fusion-transcript", {
+    description: "Show or export the full archived sub-agent transcript for a fusion run",
+    getArgumentCompletions: (prefix) => {
+      const items = lastTranscriptRuns.map((run) => ({
+        value: run.runId,
+        label: run.runId,
+        description: `${run.completedWorkers}/${run.workerCount} workers • ${run.bytes} bytes`,
+      }));
+      const filtered = items.filter((item) => item.value.startsWith(prefix));
+      return filtered.length > 0 ? filtered : null;
+    },
+    handler: async (args, ctx) => {
+      const entries = ctx.sessionManager.getEntries();
+      lastTranscriptRuns = listFusionArchiveRuns(entries);
+
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      let writePath: string | undefined;
+      const writeIndex = parts.indexOf("--write");
+      if (writeIndex !== -1) {
+        writePath = parts[writeIndex + 1];
+        parts.splice(writeIndex, writePath ? 2 : 1);
+      }
+      const runId = parts[0];
+
+      if (parts[0] === "list" || (!runId && lastTranscriptRuns.length > 1 && !writePath)) {
+        if (lastTranscriptRuns.length === 0) {
+          ctx.ui.notify("No pi-fusion runs archived in this session yet.", "info");
+          return;
+        }
+        const summary = lastTranscriptRuns
+          .map((run) => `${run.runId} (${run.completedWorkers}/${run.workerCount} workers, ${run.bytes} bytes)`)
+          .join("\n");
+        ctx.ui.notify(`pi-fusion runs in this session:\n${summary}`, "info");
+        return;
+      }
+
+      const archive = reconstructFusionArchive(entries, runId === "list" ? undefined : runId);
+      if (!archive) {
+        ctx.ui.notify(runId ? `No archived pi-fusion run found for "${runId}".` : "No pi-fusion runs archived in this session yet.", "warning");
+        return;
+      }
+
+      if (writePath) {
+        const resolved = path.resolve(ctx.cwd, writePath);
+        await fs.writeFile(resolved, archive.content, "utf8");
+        ctx.ui.notify(`Wrote pi-fusion transcript (${archive.manifest.bytes} bytes) to ${resolved}`, "info");
+        return;
+      }
+
+      if (ctx.hasUI) {
+        await ctx.ui.editor(`pi-fusion transcript: ${archive.manifest.runId}`, archive.content);
+        return;
+      }
+
+      const tmpFile = path.join(os.tmpdir(), `${archive.manifest.runId}.md`);
+      await fs.writeFile(tmpFile, archive.content, "utf8");
+      ctx.ui.notify(`Wrote pi-fusion transcript to ${tmpFile}`, "info");
     },
   });
 
@@ -716,6 +793,24 @@ export default function piFusion(pi: ExtensionAPI): void {
 
       const workerResults = await Promise.all(workerPromises);
       if (abort.signal.aborted) return undefined;
+
+      // Persist the full, untruncated sub-agent transcript as non-context
+      // `custom` archive entries before synthesis. These stay in the session
+      // file for audit/resume but are never fed back to the LLM.
+      const runId = createFusionRunId();
+      const archive = buildFusionArchiveEntries({
+        runId,
+        task,
+        discoveryEnabled: settings.discoveryEnabled,
+        rewriteEnabled: settings.rewriteEnabled,
+        promptVariations: settings.rewriteEnabled ? promptVariations : [],
+        discoveryResult,
+        rewriteResult,
+        workerResults,
+      });
+      pi.appendEntry(FUSION_ARCHIVE_ENTRY_TYPE, archive.manifest);
+      for (const chunk of archive.chunks) pi.appendEntry(FUSION_ARCHIVE_ENTRY_TYPE, chunk);
+
       if (settings.synthesisModel) {
         const synthesisModel = findModelBySpec(ctx, settings.synthesisModel);
         if (!synthesisModel) {
@@ -744,6 +839,10 @@ export default function piFusion(pi: ExtensionAPI): void {
           discoveryResult,
           rewriteResult,
           workerResults,
+          runId,
+          archiveChunks: archive.chunks.length,
+          archiveBytes: archive.manifest.bytes,
+          resumeContextBytes: settings.resumeContextBytes,
         }),
       };
     } catch (error) {

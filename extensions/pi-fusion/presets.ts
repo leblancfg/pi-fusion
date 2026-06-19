@@ -62,6 +62,7 @@ export function snapshotFusionSettings(settings: FusionSettings): PersistedFusio
     workers: settings.workers.map((worker) => ({ ...worker })),
     workerOutputBytes: settings.workerOutputBytes,
     contextBytes: settings.contextBytes,
+    resumeContextBytes: settings.resumeContextBytes,
     timeoutMs: settings.timeoutMs,
     discoveryModel: settings.discoveryModel,
     workerModel: settings.workerModel,
