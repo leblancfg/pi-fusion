@@ -1,6 +1,6 @@
 {
   "name": "@leblancfg/pi-fusion",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Parallel agentic planning and test-time compute scaling for pi coding agents.",
   "type": "module",
   "keywords": [
