@@ -317,7 +317,13 @@ This prompt formats the final planning bundle injected into the synthesis turn.
 /fusion synthesis-thinking current
 /fusion output 12000
 /fusion context 16000
+/fusion resume 8000
 /fusion timeout 600000
+
+/fusion-transcript                 # view the latest run's full archived transcript
+/fusion-transcript list            # list archived runs in this session
+/fusion-transcript <run-id>        # view a specific run
+/fusion-transcript <run-id> --write transcript.md   # export to a file
 ```
 
 `/fusion model ...` is still accepted as an alias for `/fusion worker-model ...`.
@@ -338,6 +344,7 @@ pi --fusion-synthesis-model openai/gpt-5.5
 pi --fusion-synthesis-thinking high
 pi --fusion-output-bytes 12000
 pi --fusion-context-bytes 16000
+pi --fusion-resume-bytes 8000
 pi --fusion-timeout-ms 600000
 ```
 
@@ -367,6 +374,30 @@ The user's message stays untouched in the session. `/tree` and `/fork` still sho
 prompt, and the planning bundle does not accumulate across turns. Fusion then returns to off
 automatically, so the following prompt runs normally unless you arm it again.
 
+## Session archive & resume
+
+Everything happens inside a single pi session file, so a fused turn stays auditable and resumable —
+which matters for production and long-running workloads.
+
+Each fused turn writes two things into the session tree:
+
+- **A full archive.** The complete, untruncated discovery, rewrite, and worker transcripts are saved
+  as `pi-fusion-archive` `custom` entries (chunked only for storage, never semantically truncated).
+  pi's context builder never feeds `custom` entries to the model, so the archive is full-fidelity
+  without ever inflating the context window. Each run gets a sortable `run-id`.
+- **A bounded handoff.** A single `custom_message` carries a budgeted summary of the worker
+  conclusions plus a pointer to the archive `run-id`. This is the only fusion content that resumed
+  and subsequent turns actually see, capped by `fusion-resume-bytes` (default `8000`).
+
+The result: when you resume a session, the model gets a useful, compact handoff instead of the raw
+sub-agent dumps, but the full transcripts are still on disk for audit, display, or export. Inspect
+them any time with `/fusion-transcript` (optionally `--write <path>` to export). Because the archive
+lives in `custom` entries, it survives resume but is filtered out of normal `/tree` conversation
+flow.
+
+The synthesis turn itself still sees a larger slice of worker output (`fusion-output-bytes`); only
+the durable, in-context handoff is clamped by `fusion-resume-bytes`.
+
 ## Bypasses
 
 Fusion is skipped for:
@@ -387,15 +418,24 @@ Worker output inserted into the synthesis turn is capped per worker (`fusion-out
 (`fusion-context-bytes`, default `16000`). Discovery tool-result context is bounded before being
 shared downstream.
 
-Full worker transcripts are not stored separately. The session stores your original message; the
-planning bundle lives in the per-turn system prompt and is regenerated each fused turn.
+Three byte budgets keep the three audiences separate:
+
+- `fusion-output-bytes` (default `12000`) — worker output inserted into the synthesis turn's prompt.
+- `fusion-resume-bytes` (default `8000`) — worker conclusions kept in context for resumed and
+  subsequent turns (the durable handoff).
+- `fusion-context-bytes` (default `16000`) — recent conversation sent down to discovery and workers.
+
+Full worker transcripts are stored in the session file as non-context archive entries (see
+[Session archive & resume](#session-archive--resume)). They are recoverable via `/fusion-transcript`
+but never enter the context window automatically.
 
 ## Rough edges
 
 - Discovery, rewrite, and worker planning block the turn until the fanout finishes, times out, or
   you cancel with `Esc`.
 - Discovery and workers are subprocesses, not true pi session forks. They receive a truncated text
-  snapshot of recent conversation.
+  snapshot of recent conversation. Their full output is archived into the parent session afterward
+  rather than as live sub-sessions.
 - Discovery and workers do not see attached images.
 - Worker subprocesses still load normal pi context files such as `AGENTS.md`, but not extensions.
 - The live split pane only appears in TUI mode. Print, JSON, and RPC modes still run fusion without

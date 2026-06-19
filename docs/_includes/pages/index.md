@@ -12,7 +12,7 @@
 <section class="grid" aria-label="How it works">
   <article class="card">
     <h2>What it does</h2>
-    <p>Workers plan in parallel with configurable tool access, then their notes are injected into the synthesis prompt. All this content is saved to a single <a href="https://pi.dev/docs/latest/session-format#tree-structure">pi session file</a>.</p>
+    <p>Workers plan in parallel with configurable tool access, then their notes are injected into the synthesis prompt. The full sub-agent transcripts are archived in a single <a href="https://pi.dev/docs/latest/session-format#tree-structure">pi session file</a> &mdash; auditable and resumable &mdash; while only a bounded handoff stays in the context window.</p>
   </article>
   <article class="card">
     <h2>Why bother</h2>
