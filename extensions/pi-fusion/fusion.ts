@@ -717,6 +717,27 @@ export function getWorkerLens(index: number): WorkerLens {
   return { name: `#${index + 1}` };
 }
 
+// Set on every fusion sub-agent process. pi-fusion's own activation no-ops when
+// it sees this, so sub-agents still load the user's other extensions but never
+// recursively re-arm fusion.
+export const FUSION_SUBAGENT_ENV = "PI_FUSION_SUBAGENT";
+
+/**
+ * Builds the pi CLI args for a fusion sub-agent. Sub-agents run headless
+ * (`-p --mode json`) and stateless (`--no-session`), but deliberately keep
+ * extension discovery on so workers can use the user's installed extensions;
+ * pi-fusion itself opts out via FUSION_SUBAGENT_ENV instead of `--no-extensions`.
+ */
+export function buildWorkerArgs(input: { promptFile: string; tools?: string[] | "none" | "all"; model?: string; thinkingLevel?: string }): string[] {
+  const args = ["--mode", "json", "-p", "--no-session"];
+  if (input.tools === "none") args.push("--no-tools");
+  else if (input.tools !== "all") args.push("--tools", (input.tools ?? ["read", "grep", "find", "ls"]).join(","));
+  if (input.model) args.push("--model", input.model);
+  if (input.thinkingLevel) args.push("--thinking", input.thinkingLevel);
+  args.push(`@${input.promptFile}`);
+  return args;
+}
+
 export function formatToolEvent(toolName: string, args: unknown, home?: string): string {
   const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const asString = (value: unknown): string => (typeof value === "string" ? value : value === undefined || value === null ? "" : String(value));

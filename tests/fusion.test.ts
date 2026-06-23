@@ -13,6 +13,7 @@ import {
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
   buildRewritePrompt,
+  buildWorkerArgs,
   buildWorkerPrompt,
   chunkUtf8,
   collectRecentConversation,
@@ -52,6 +53,34 @@ function worker(overrides: Partial<WorkerResult> = {}): WorkerResult {
     ...overrides,
   };
 }
+
+describe("buildWorkerArgs", () => {
+  it("runs sub-agents headless and stateless but keeps other extensions enabled", () => {
+    const args = buildWorkerArgs({ promptFile: "/tmp/w.md" });
+    assert.ok(args.includes("-p"), "prints in non-interactive mode");
+    assert.deepEqual(args.slice(0, 2), ["--mode", "json"]);
+    assert.ok(args.includes("--no-session"), "does not persist a session");
+    assert.ok(!args.includes("--no-extensions"), "must not disable the user's other extensions");
+    assert.equal(args.at(-1), "@/tmp/w.md");
+  });
+
+  it("defaults to read-only tools and omits --tools for the 'all' mode", () => {
+    assert.ok(buildWorkerArgs({ promptFile: "/tmp/w.md" }).join(" ").includes("--tools read,grep,find,ls"));
+    assert.ok(
+      buildWorkerArgs({ promptFile: "/tmp/w.md", tools: ["read", "bash"] })
+        .join(" ")
+        .includes("--tools read,bash"),
+    );
+    assert.ok(!buildWorkerArgs({ promptFile: "/tmp/w.md", tools: "all" }).includes("--tools"));
+    assert.ok(buildWorkerArgs({ promptFile: "/tmp/w.md", tools: "none" }).includes("--no-tools"));
+  });
+
+  it("passes model and thinking level when provided", () => {
+    const args = buildWorkerArgs({ promptFile: "/tmp/w.md", model: "openai/gpt-5", thinkingLevel: "high" });
+    assert.ok(args.join(" ").includes("--model openai/gpt-5"));
+    assert.ok(args.join(" ").includes("--thinking high"));
+  });
+});
 
 describe("settings", () => {
   it("resolves flags with clamped numeric values", () => {

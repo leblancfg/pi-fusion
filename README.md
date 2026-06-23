@@ -363,7 +363,7 @@ When fusion is armed, the next idle, non-command user input consumes that arm an
 - runs query rewriting in parallel with discovery;
 - replaces discovery with live worker splits after discovery finishes;
 - starts standalone `pi` subprocesses in JSON print mode;
-- disables extensions in subprocesses with `--no-extensions` to avoid recursive fusion;
+- keeps your other extensions enabled in those subprocesses; only pi-fusion itself opts out (via the `PI_FUSION_SUBAGENT` env var) so workers can use your installed extensions without recursive fusion;
 - gives discovery and workers either all normal tools (default) or only read/search/list tools (`read`, `grep`, `find`, `ls`);
 - gives query rewriting no tools;
 - injects shared discovery context into every worker prompt;
@@ -437,7 +437,7 @@ but never enter the context window automatically.
   snapshot of recent conversation. Their full output is archived into the parent session afterward
   rather than as live sub-sessions.
 - Discovery and workers do not see attached images.
-- Worker subprocesses still load normal pi context files such as `AGENTS.md`, but not extensions.
+- Worker subprocesses load normal pi context files such as `AGENTS.md` and your installed extensions; only pi-fusion stays inert inside them (gated by `PI_FUSION_SUBAGENT`).
 - The live split pane only appears in TUI mode. Print, JSON, and RPC modes still run fusion without
   that UI.
 - Print, JSON, and RPC modes intentionally get no progress output. stdout is the consumed payload in

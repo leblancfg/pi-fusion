@@ -10,6 +10,7 @@ import {
   buildDiscoveryPrompt,
   buildFusionTraceMessage,
   buildRewritePrompt,
+  buildWorkerArgs,
   buildWorkerPrompt,
   collectRecentConversation,
   consumeNextTurnFusion,
@@ -19,6 +20,7 @@ import {
   formatToolEvent,
   fusionTraceHeadline,
   FUSION_ARCHIVE_ENTRY_TYPE,
+  FUSION_SUBAGENT_ENV,
   FUSION_TRACE_MESSAGE_TYPE,
   listFusionArchiveRuns,
   reconstructFusionArchive,
@@ -147,12 +149,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
   };
 
   try {
-    const args = ["--mode", "json", "-p", "--no-session", "--no-extensions"];
-    if (input.tools === "none") args.push("--no-tools");
-    else if (input.tools !== "all") args.push("--tools", (input.tools ?? ["read", "grep", "find", "ls"]).join(","));
-    if (input.model) args.push("--model", input.model);
-    if (input.thinkingLevel) args.push("--thinking", input.thinkingLevel);
-    args.push(`@${tmp.file}`);
+    const args = buildWorkerArgs({ promptFile: tmp.file, tools: input.tools, model: input.model, thinkingLevel: input.thinkingLevel });
 
     const invocation = getPiInvocation(args);
     const exitCode = await new Promise<number | null>((resolve) => {
@@ -161,6 +158,7 @@ async function runWorker(input: RunWorkerInput): Promise<WorkerResult> {
         cwd: input.cwd,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, [FUSION_SUBAGENT_ENV]: "1" },
       });
 
       const onAbort = () => {
@@ -354,6 +352,11 @@ function buildSharedDiscoveryContext(result: WorkerResult): string {
 }
 
 export default function piFusion(pi: ExtensionAPI): void {
+  // When pi-fusion is loaded inside one of its own sub-agents, stay inert so the
+  // sub-agent can still use the user's other extensions without recursively
+  // re-arming fusion (which would spawn its own workers).
+  if (process.env[FUSION_SUBAGENT_ENV]) return;
+
   let settings: FusionSettings = { ...DEFAULT_SETTINGS };
   let armedForNextTurn = false;
   let lastTranscriptRuns: ReturnType<typeof listFusionArchiveRuns> = [];
