@@ -41,7 +41,21 @@
             <a class="social-link" href="https://pi.dev/packages/@leblancfg/pi-fusion">pi.dev</a>
           </nav>
         </div>
-        <p class="eyebrow">pi extension</p>
+        <div class="eyebrow-row">
+          <p class="eyebrow">pi extension</p>
+          <details class="lang-dropdown">
+            <summary aria-label="{% if page.lang == 'ja' %}言語切り替え{% else %}Language switcher{% endif %}">
+              {% if page.lang == 'ja' %}日本語{% else %}English{% endif %}
+            </summary>
+            <div class="lang-menu" role="menu">
+              {% if page.lang == 'ja' %}
+              <a role="menuitem" href="{{ page.alternate_url | default: '/' | relative_url }}" lang="en">English</a>
+              {% else %}
+              <a role="menuitem" href="{{ page.alternate_url | default: '/ja/' | relative_url }}" lang="ja">日本語</a>
+              {% endif %}
+            </div>
+          </details>
+        </div>
         <h1>{{ page.heading | default: page.title | default: site.title }}</h1>
         {% if page.lead %}
         <p class="lead">{{ page.lead }}</p>
@@ -57,24 +71,14 @@
           <a class="button{% if page.url == '/sessions/' %} primary{% endif %}" href="{{ '/sessions/' | relative_url }}">Session file</a>
           {% endif %}
         </nav>
-        <nav class="language-switcher" aria-label="{% if page.lang == 'ja' %}言語切り替え{% else %}Language switcher{% endif %}">
-          {% if page.lang == 'ja' %}
-          <a class="language-link" href="{{ page.alternate_url | default: '/' | relative_url }}" lang="en">English</a>
-          <span class="language-link active" aria-current="page">日本語</span>
-          {% else %}
-          <span class="language-link active" aria-current="page">English</span>
-          <a class="language-link" href="{{ page.alternate_url | default: '/ja/' | relative_url }}" lang="ja">日本語</a>
-          {% endif %}
-        </nav>
       </header>
 
       <article class="content">{{ content }}</article>
 
       <footer>
         {% if page.lang == 'ja' %} MIT licensed。<a href="https://pi.dev">pi</a> 向けに built。Source は
-        <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>。 {% else %} MIT licensed. Built for
-        <a href="https://pi.dev">pi</a>. Source on <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>.
-        {% endif %}
+        <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>。 {% else %} MIT licensed. Built for <a href="https://pi.dev">pi</a>. Source on
+        <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>. {% endif %}
       </footer>
     </main>
   </body>

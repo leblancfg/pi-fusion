@@ -125,6 +125,13 @@ h3 {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .eyebrow {
   margin: 0;
   font-size: 13px;
@@ -132,6 +139,72 @@ h3 {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.lang-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lang-dropdown > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lang-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lang-dropdown > summary::after {
+  content: "▾";
+  font-size: 10px;
+  line-height: 1;
+}
+
+.lang-dropdown > summary:hover,
+.lang-dropdown[open] > summary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lang-menu {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.lang-menu a {
+  display: block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lang-menu a:hover {
+  text-decoration: none;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 h1 {
@@ -168,13 +241,6 @@ h3 {
   margin-top: 24px;
 }
 
-.language-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
 .button {
   display: inline-flex;
   align-items: center;
@@ -201,30 +267,6 @@ h3 {
 
 .button.primary:hover {
   background: #0a3517;
-}
-
-.language-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.language-link:hover {
-  text-decoration: none;
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.language-link.active {
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  background: var(--accent);
 }
 
 .content > :first-child {
