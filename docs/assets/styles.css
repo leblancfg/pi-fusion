@@ -168,6 +168,13 @@ h3 {
   margin-top: 24px;
 }
 
+.language-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -194,6 +201,30 @@ h3 {
 
 .button.primary:hover {
   background: #0a3517;
+}
+
+.language-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.language-link:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.language-link.active {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 
 .content > :first-child {

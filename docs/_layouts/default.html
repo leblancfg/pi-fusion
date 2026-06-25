@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ page.lang | default: 'en' }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -35,7 +35,7 @@
           <a class="brand-mark" href="{{ '/' | relative_url }}" aria-label="pi-fusion home">
             <span class="brand-orbit" aria-hidden="true">∪</span>
           </a>
-          <nav class="social" aria-label="Project links">
+          <nav class="social" aria-label="{% if page.lang == 'ja' %}プロジェクトリンク{% else %}Project links{% endif %}">
             <a class="social-link" href="https://github.com/leblancfg/pi-fusion">Github</a>
             <a class="social-link" href="https://www.npmjs.com/package/@leblancfg/pi-fusion">npm</a>
             <a class="social-link" href="https://pi.dev/packages/@leblancfg/pi-fusion">pi.dev</a>
@@ -46,16 +46,36 @@
         {% if page.lead %}
         <p class="lead">{{ page.lead }}</p>
         {% endif %}
-        <nav class="actions" aria-label="Site navigation">
+        <nav class="actions" aria-label="{% if page.lang == 'ja' %}サイトナビゲーション{% else %}Site navigation{% endif %}">
+          {% if page.lang == 'ja' %}
+          <a class="button{% if page.url == '/ja/' %} primary{% endif %}" href="{{ '/ja/' | relative_url }}">概要</a>
+          <a class="button{% if page.url == '/ja/presets/' %} primary{% endif %}" href="{{ '/ja/presets/' | relative_url }}">Presets と Prompts</a>
+          <a class="button{% if page.url == '/ja/sessions/' %} primary{% endif %}" href="{{ '/ja/sessions/' | relative_url }}">Session file</a>
+          {% else %}
           <a class="button{% if page.url == '/' %} primary{% endif %}" href="{{ '/' | relative_url }}">Overview</a>
           <a class="button{% if page.url == '/presets/' %} primary{% endif %}" href="{{ '/presets/' | relative_url }}">Presets & Prompts</a>
           <a class="button{% if page.url == '/sessions/' %} primary{% endif %}" href="{{ '/sessions/' | relative_url }}">Session file</a>
+          {% endif %}
+        </nav>
+        <nav class="language-switcher" aria-label="{% if page.lang == 'ja' %}言語切り替え{% else %}Language switcher{% endif %}">
+          {% if page.lang == 'ja' %}
+          <a class="language-link" href="{{ page.alternate_url | default: '/' | relative_url }}" lang="en">English</a>
+          <span class="language-link active" aria-current="page">日本語</span>
+          {% else %}
+          <span class="language-link active" aria-current="page">English</span>
+          <a class="language-link" href="{{ page.alternate_url | default: '/ja/' | relative_url }}" lang="ja">日本語</a>
+          {% endif %}
         </nav>
       </header>
 
       <article class="content">{{ content }}</article>
 
-      <footer>MIT licensed. Built for <a href="https://pi.dev">pi</a>. Source on <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>.</footer>
+      <footer>
+        {% if page.lang == 'ja' %} MIT licensed。<a href="https://pi.dev">pi</a> 向けに built。Source は
+        <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>。 {% else %} MIT licensed. Built for
+        <a href="https://pi.dev">pi</a>. Source on <a href="https://github.com/leblancfg/pi-fusion">GitHub</a>.
+        {% endif %}
+      </footer>
     </main>
   </body>
 </html>

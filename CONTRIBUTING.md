@@ -1,5 +1,7 @@
 # Contributing to pi-fusion
 
+[日本語版](CONTRIBUTING.ja.md)
+
 Thanks for helping out. pi-fusion is a small, standalone pi extension, so the
 contribution loop is deliberately lightweight.
 

@@ -1,7 +1,9 @@
 ---
 layout: default
+lang: en
 title: pi-fusion
 heading: pi-fusion
+alternate_url: /ja/
 lead: |
   A model fusion planning pass for pi. Several model calls explore your task in parallel, then merge
   into one synthesis turn.
