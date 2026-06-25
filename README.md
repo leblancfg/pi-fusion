@@ -1,5 +1,7 @@
 # pi-fusion
 
+[日本語ドキュメント](https://leblancfg.com/pi-fusion/ja/)
+
 <p align="center">
   <img src="docs/assets/social-preview.png" alt="pi-fusion: better than frontier performance with multiple models" width="760">
 </p>
