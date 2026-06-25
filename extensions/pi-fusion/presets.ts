@@ -55,7 +55,6 @@ export function fusionPresetPath(cwd: string, scope: FusionPresetScope): string 
 
 export function snapshotFusionSettings(settings: FusionSettings): PersistedFusionSettings {
   return {
-    enabled: settings.enabled,
     discoveryEnabled: settings.discoveryEnabled,
     rewriteEnabled: settings.rewriteEnabled,
     workerCount: settings.workerCount,
