@@ -33,6 +33,8 @@ describe("fusion presets", () => {
 
     const savedPath = await saveFusionPreset(cwd, name, settings, "project", "project-local eval profile");
     assert.equal(savedPath, path.join(cwd, ".pi", "fusion.json"));
+    const savedFile = JSON.parse(await fs.readFile(savedPath, "utf8"));
+    assert.equal(savedFile.presets[name].settings.enabled, undefined);
 
     const preset = findFusionPreset(await loadFusionPresets(cwd), name);
     assert.ok(preset);
@@ -45,7 +47,7 @@ describe("fusion presets", () => {
 
     const applied = applyFusionPresetSettings(current, preset.name, preset);
     assert.equal(applied.preset, name);
-    assert.equal(applied.enabled, true);
+    assert.equal(applied.enabled, false);
     assert.equal(applied.workerCount, 4);
     assert.equal(applied.discoveryModel, undefined);
     assert.equal(applied.discoveryThinking, undefined);
