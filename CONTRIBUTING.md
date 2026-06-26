@@ -65,3 +65,35 @@ manual TUI runs.
 - Write a test first when the change is testable, and make sure
   `pnpm run check` is green before you commit.
 - Keep PRs focused; push early and often.
+
+## Publishing
+
+npm releases are published from GitHub Actions with npm trusted publishing, so
+the release workflow does not use a long-lived `NPM_TOKEN`.
+
+One-time npm setup:
+
+1. Open the package on npm: `https://www.npmjs.com/package/@leblancfg/pi-fusion`.
+2. Go to **Settings**, then **Trusted Publisher**.
+3. Choose **GitHub Actions**.
+4. Use these values:
+   - Organization or user: `leblancfg`
+   - Repository: `pi-fusion`
+   - Workflow filename: `publish.yml`
+   - Environment name: leave blank
+   - Allowed actions: `npm publish`
+5. Save the trusted publisher.
+6. After the first trusted publish works, consider **Settings**, then
+   **Publishing access**, then **Require two-factor authentication and disallow
+   tokens**.
+
+Release flow:
+
+1. Bump `package.json` and merge the change to `main`.
+2. Create and publish a GitHub Release with a tag that exactly matches the
+   package version, for example `v0.4.2`.
+3. The `Publish to npm` workflow checks out that tag, runs `pnpm run check`, and
+   publishes to npm through OIDC.
+
+If the GitHub Release already exists but npm did not publish, rerun the
+`.github/workflows/publish.yml` workflow manually with the release tag.
