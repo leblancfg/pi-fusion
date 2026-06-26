@@ -637,6 +637,35 @@ describe("conversation collection", () => {
     assert.match(context, /answer/);
     assert.doesNotMatch(context, /old/);
   });
+
+  it("preserves newest messages when the conversation exceeds the byte budget", () => {
+    const entries = [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "older context ".repeat(20) }] } },
+      { type: "message", message: { role: "assistant", content: [{ type: "text", text: "newest answer" }] } },
+    ];
+
+    const context = collectRecentConversation(entries, 64);
+
+    assert.match(context, /newest answer/);
+    assert.doesNotMatch(context, /older context/);
+  });
+
+  it("keeps the latest exchange when adding an older message would exceed the byte budget", () => {
+    const recentQuestion = "recent question";
+    const recentAnswer = "recent answer";
+    const recentExchangeBytes = Buffer.byteLength(`### user\n\n${recentQuestion}\n\n### assistant\n\n${recentAnswer}`, "utf8");
+    const entries = [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "stale context ".repeat(30) }] } },
+      { type: "message", message: { role: "user", content: [{ type: "text", text: recentQuestion }] } },
+      { type: "message", message: { role: "assistant", content: [{ type: "text", text: recentAnswer }] } },
+    ];
+
+    const context = collectRecentConversation(entries, recentExchangeBytes + 8);
+
+    assert.match(context, new RegExp(recentQuestion));
+    assert.match(context, new RegExp(recentAnswer));
+    assert.doesNotMatch(context, /stale context/);
+  });
 });
 
 describe("truncateUtf8", () => {

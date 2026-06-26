@@ -1037,6 +1037,7 @@ function getContentText(content: unknown): string {
 export function collectRecentConversation(entries: unknown[], maxBytes: number): string {
   if (maxBytes <= 0) return "";
   const chunks: string[] = [];
+  let bytes = 0;
 
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i] as { type?: unknown; message?: { role?: unknown; content?: unknown } };
@@ -1047,11 +1048,16 @@ export function collectRecentConversation(entries: unknown[], maxBytes: number):
     const text = getContentText(entry.message.content).trim();
     if (!text || text.includes(SYNTHESIS_PROMPT_MARKER) || text.includes(LEGACY_SYNTHESIS_PROMPT_MARKER)) continue;
 
-    chunks.unshift(`### ${role}\n\n${text}`);
-    const joined = chunks.join("\n\n");
-    if (Buffer.byteLength(joined, "utf8") > maxBytes) {
-      return truncateUtf8(joined, maxBytes);
+    const chunk = `### ${role}\n\n${text}`;
+    const separatorBytes = chunks.length > 0 ? Buffer.byteLength("\n\n", "utf8") : 0;
+    const chunkBytes = Buffer.byteLength(chunk, "utf8");
+    if (bytes + separatorBytes + chunkBytes > maxBytes) {
+      if (chunks.length === 0) return truncateUtf8(chunk, maxBytes);
+      break;
     }
+
+    chunks.unshift(chunk);
+    bytes += separatorBytes + chunkBytes;
   }
 
   return chunks.join("\n\n");
