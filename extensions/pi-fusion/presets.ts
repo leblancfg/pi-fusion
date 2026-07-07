@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   DEFAULT_PROMPTS,
   DEFAULT_SETTINGS,
@@ -37,11 +38,21 @@ interface FusionPresetFile {
   };
 }
 
+const FUSION_CONFIG_FILENAMES = ["fusion.yml", "fusion.yaml", "fusion.json"] as const;
+
+function findExistingFusionConfigFile(dir: string): string | undefined {
+  for (const filename of FUSION_CONFIG_FILENAMES) {
+    const candidate = path.join(dir, filename);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function findProjectConfigRoot(cwd: string): string {
   let current = path.resolve(cwd);
 
   while (true) {
-    if (existsSync(path.join(current, ".pi", "fusion.json")) || existsSync(path.join(current, ".git"))) return current;
+    if (findExistingFusionConfigFile(path.join(current, ".pi")) || existsSync(path.join(current, ".git"))) return current;
 
     const parent = path.dirname(current);
     if (parent === current) return path.resolve(cwd);
@@ -50,7 +61,8 @@ function findProjectConfigRoot(cwd: string): string {
 }
 
 export function fusionPresetPath(cwd: string, scope: FusionPresetScope): string {
-  return scope === "global" ? path.join(getAgentDir(), "fusion.json") : path.join(findProjectConfigRoot(cwd), ".pi", "fusion.json");
+  const configDir = scope === "global" ? getAgentDir() : path.join(findProjectConfigRoot(cwd), ".pi");
+  return findExistingFusionConfigFile(configDir) ?? path.join(configDir, "fusion.yml");
 }
 
 export function snapshotFusionSettings(settings: FusionSettings): PersistedFusionSettings {
@@ -103,11 +115,18 @@ async function readPresetFile(filePath: string): Promise<FusionPresetFile> {
   if (!existsSync(filePath)) return { version: 1, presets: {} };
   try {
     const raw = await fs.readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as FusionPresetFile;
+    const parsed = (path.extname(filePath) === ".json" ? JSON.parse(raw) : parseYaml(raw)) as FusionPresetFile | null;
+    if (!parsed || typeof parsed !== "object") return { version: 1, presets: {} };
     return { version: parsed.version ?? 1, presets: parsed.presets ?? {}, prompts: parsed.prompts };
   } catch {
     return { version: 1, presets: {} };
   }
+}
+
+async function writePresetFile(filePath: string, file: FusionPresetFile): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const contents = path.extname(filePath) === ".json" ? `${JSON.stringify(file, null, 2)}\n` : stringifyYaml(file);
+  await fs.writeFile(filePath, contents, "utf8");
 }
 
 export async function loadFusionPresets(cwd: string): Promise<LoadedFusionPreset[]> {
@@ -145,8 +164,7 @@ export async function saveFusionPreset(
     settings: snapshotFusionSettings(settings),
   };
 
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  await writePresetFile(filePath, file);
   return filePath;
 }
 
@@ -155,8 +173,7 @@ export async function deleteFusionPreset(cwd: string, name: string, scope: Fusio
   const file = await readPresetFile(filePath);
   if (!file.presets || !(name in file.presets)) return false;
   delete file.presets[name];
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  await writePresetFile(filePath, file);
   return true;
 }
 
@@ -189,8 +206,7 @@ export async function initializeFusionPrompts(cwd: string): Promise<void> {
 
     if (!file.prompts) {
       file.prompts = { ...DEFAULT_PROMPTS };
-      await fs.mkdir(path.dirname(globalPath), { recursive: true });
-      await fs.writeFile(globalPath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+      await writePresetFile(globalPath, file);
     }
   } catch {
     // Best-effort

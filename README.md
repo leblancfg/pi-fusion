@@ -171,10 +171,10 @@ Open the settings pane:
 
 Presets are user-defined snapshots of the settings pane. There are no built-in
 profiles, because those would go stale and hide assumptions. Save your own from
-`/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.json`;
-project presets live in `.pi/fusion.json` and override global presets with the
-same name. See [docs/presets.md](docs/presets.md) for the full format and
-examples.
+`/fusion` → **Presets**. Global presets live in `~/.pi/agent/fusion.yml`;
+project presets live in `.pi/fusion.yml` and override global presets with the
+same name. Existing `fusion.json` files still load. See [docs/presets.md](docs/presets.md)
+for the full format and examples.
 
 The status bar uses a compact union marker: `∪̸` means fusion is off, and `∪` means the next eligible
 turn is armed.
@@ -204,41 +204,39 @@ current, off, minimal, low, medium, high, xhigh
 
 ## Prompt Customization
 
-You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.json` file (`~/.pi/agent/fusion.json`). You can see and edit them there, or override them on a per-project basis.
+You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.yml` file (`~/.pi/agent/fusion.yml`). You can see and edit them there, or override them on a per-project basis. Existing `fusion.json` files remain supported.
 
 ### Where prompts are stored
 
 `pi-fusion` reads prompts from two locations:
 
-| Scope   | Path                      | Use it for                                          |
-| ------- | ------------------------- | --------------------------------------------------- |
-| Global  | `~/.pi/agent/fusion.json` | Default templates used across all projects.         |
-| Project | `.pi/fusion.json`         | Project-specific templates to share with your team. |
+| Scope   | Path                     | Use it for                                          |
+| ------- | ------------------------ | --------------------------------------------------- |
+| Global  | `~/.pi/agent/fusion.yml` | Default templates used across all projects.         |
+| Project | `.pi/fusion.yml`         | Project-specific templates to share with your team. |
 
-Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `actor` templates.
+Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.yml`, `.pi/fusion.yaml`, `.pi/fusion.json`, or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `synthesis` templates.
 
-### JSON format
+### YAML format
 
-Add a `"prompts"` section at the top level of your `fusion.json`:
+Add a `prompts` section at the top level of your `fusion.yml`:
 
-```json
-{
-  "version": 1,
-  "prompts": {
-    "discovery": "...",
-    "rewrite": "...",
-    "worker": "...",
-    "synthesis": "..."
-  },
-  "presets": {
-    "cheap-planners": {
-      "description": "Fast worker fanout, current model as synthesis",
-      "settings": {
-        ...
-      }
-    }
-  }
-}
+```yaml
+version: 1
+prompts:
+  discovery: |
+    ...
+  rewrite: |
+    ...
+  worker: |
+    ...
+  synthesis: |
+    ...
+presets:
+  cheap-planners:
+    description: Fast worker fanout, current model as synthesis
+    settings:
+      workerCount: 3
 ```
 
 ### Available Prompts & Placeholders
@@ -353,7 +351,7 @@ pi --fusion-timeout-ms 600000
 Fusion is off by default. Use `--fusion-enabled` to start with the next eligible turn armed;
 `--fusion-disabled` forces it off. After a fused turn starts, `pi-fusion` automatically disarms
 itself. `--fusion-model` remains as a backwards-compatible alias for `--fusion-worker-model`. Use
-`--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.json` or `.pi/fusion.json` at
+`--fusion-preset NAME` to load a preset from `~/.pi/agent/fusion.yml` or `.pi/fusion.yml` at
 startup. Planner subprocesses get all tools by default; use `/fusion tools read-only` or
 `--fusion-planner-tools read-only` to restore the original narrow read/search/list tool set.
 
@@ -444,7 +442,7 @@ but never enter the context window automatically.
   that UI.
 - Print, JSON, and RPC modes intentionally get no progress output. stdout is the consumed payload in
   those modes.
-- Malformed `fusion.json` files are ignored instead of crashing the extension; fix the JSON syntax if presets or prompts are missing unexpectedly.
+- Malformed `fusion.yml`, `fusion.yaml`, or `fusion.json` files are ignored instead of crashing the extension; fix the config syntax if presets or prompts are missing unexpectedly.
 - Some providers hide reasoning streams, so a worker column may show no reasoning even with
   reasoning enabled.
 - Discovery and worker tool access defaults to all tools. Use read-only planner tools for safer planning passes when you do not want subprocesses to run write-capable tools.

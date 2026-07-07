@@ -1,6 +1,6 @@
 {
   "name": "@leblancfg/pi-fusion",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Parallel agentic planning and test-time compute scaling for pi coding agents.",
   "type": "module",
   "keywords": [
@@ -69,5 +69,8 @@
   "bugs": {
     "url": "https://github.com/leblancfg/pi-fusion/issues"
   },
-  "homepage": "https://leblancfg.com/pi-fusion/"
+  "homepage": "https://leblancfg.com/pi-fusion/",
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
 }

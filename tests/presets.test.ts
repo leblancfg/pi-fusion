@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveSettings, DEFAULT_PROMPTS, buildDiscoveryPrompt } from "../extensions/pi-fusion/fusion.ts";
 import {
   applyFusionPresetSettings,
@@ -32,8 +33,8 @@ describe("fusion presets", () => {
     );
 
     const savedPath = await saveFusionPreset(cwd, name, settings, "project", "project-local eval profile");
-    assert.equal(savedPath, path.join(cwd, ".pi", "fusion.json"));
-    const savedFile = JSON.parse(await fs.readFile(savedPath, "utf8"));
+    assert.equal(savedPath, path.join(cwd, ".pi", "fusion.yml"));
+    const savedFile = parseYaml(await fs.readFile(savedPath, "utf8"));
     assert.equal(savedFile.presets[name].settings.enabled, undefined);
 
     const preset = findFusionPreset(await loadFusionPresets(cwd), name);
@@ -70,11 +71,11 @@ describe("fusion presets", () => {
     process.env.PI_CODING_AGENT_DIR = cwd;
 
     try {
-      // 1. First run: initialize prompts. Should write DEFAULT_PROMPTS to global fusion.json (cwd/fusion.json)
+      // 1. First run: initialize prompts. Should write DEFAULT_PROMPTS to global fusion.yml (cwd/fusion.yml)
       await initializeFusionPrompts(cwd);
-      const globalFilePath = path.join(cwd, "fusion.json");
+      const globalFilePath = path.join(cwd, "fusion.yml");
       const globalFileRaw = await fs.readFile(globalFilePath, "utf8");
-      const globalFile = JSON.parse(globalFileRaw);
+      const globalFile = parseYaml(globalFileRaw);
 
       assert.ok(globalFile.prompts);
       assert.equal(globalFile.prompts.discovery, DEFAULT_PROMPTS.discovery);
@@ -89,7 +90,7 @@ describe("fusion presets", () => {
       // 3. Edit global file to override one prompt
       globalFile.prompts.discovery = "CUSTOM DISCOVERY: {{task}} in {{cwd}}";
       globalFile.prompts.worker = "CUSTOM WORKER: {{assignedPrompt}}";
-      await fs.writeFile(globalFilePath, JSON.stringify(globalFile, null, 2), "utf8");
+      await fs.writeFile(globalFilePath, stringifyYaml(globalFile), "utf8");
 
       const loaded2 = await loadFusionPrompts(cwd);
       assert.equal(loaded2.discovery, "CUSTOM DISCOVERY: {{task}} in {{cwd}}");
@@ -104,17 +105,17 @@ describe("fusion presets", () => {
       });
       assert.equal(renderedDiscovery, "CUSTOM DISCOVERY: Fix tests in /src");
 
-      // 4. Create project-local fusion.json with override
+      // 4. Create project-local fusion.yml with override
       const projectDir = path.join(cwd, ".pi");
       await fs.mkdir(projectDir, { recursive: true });
-      const projectFilePath = path.join(projectDir, "fusion.json");
+      const projectFilePath = path.join(projectDir, "fusion.yml");
       const projectFile = {
         version: 1,
         prompts: {
           discovery: "PROJECT DISCOVERY: {{task}}",
         },
       };
-      await fs.writeFile(projectFilePath, JSON.stringify(projectFile, null, 2), "utf8");
+      await fs.writeFile(projectFilePath, stringifyYaml(projectFile), "utf8");
 
       const loaded3 = await loadFusionPrompts(cwd);
       // Project override wins
@@ -131,6 +132,44 @@ describe("fusion presets", () => {
         template: loaded3.discovery,
       });
       assert.equal(renderedProjectDiscovery, "PROJECT DISCOVERY: Fix bug");
+    } finally {
+      process.env.PI_AGENT_DIR = originalAgentDir;
+      process.env.PI_CODING_AGENT_DIR = originalCodingAgentDir;
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
+  it("keeps loading existing JSON config files", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-fusion-json-compat-"));
+
+    const originalAgentDir = process.env.PI_AGENT_DIR;
+    const originalCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_AGENT_DIR = cwd;
+    process.env.PI_CODING_AGENT_DIR = cwd;
+
+    try {
+      await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+      await fs.writeFile(
+        path.join(cwd, ".pi", "fusion.json"),
+        JSON.stringify({
+          version: 1,
+          prompts: { worker: "JSON WORKER: {{assignedPrompt}}" },
+          presets: { json: { settings: { workerCount: 5 } } },
+        }),
+        "utf8",
+      );
+
+      const prompts = await loadFusionPrompts(cwd);
+      assert.equal(prompts.worker, "JSON WORKER: {{assignedPrompt}}");
+
+      const preset = findFusionPreset(await loadFusionPresets(cwd), "json");
+      assert.equal(preset?.scope, "project");
+      assert.equal(preset?.path, path.join(cwd, ".pi", "fusion.json"));
+
+      const settings = resolveSettings({}, { workerCount: 2 });
+      await saveFusionPreset(cwd, "json-two", settings, "project");
+      const savedFile = JSON.parse(await fs.readFile(path.join(cwd, ".pi", "fusion.json"), "utf8"));
+      assert.equal(savedFile.presets["json-two"].settings.workerCount, 2);
     } finally {
       process.env.PI_AGENT_DIR = originalAgentDir;
       process.env.PI_CODING_AGENT_DIR = originalCodingAgentDir;
