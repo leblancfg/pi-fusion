@@ -15,16 +15,16 @@ A preset can capture:
 
 ## Where presets are stored
 
-pi-fusion reads two JSON files:
+pi-fusion reads YAML config files by default and still supports existing JSON files:
 
 | Scope   | Path                      | Use it for                                             |
 | ------- | ------------------------- | ------------------------------------------------------ |
-| Global  | `~/.pi/agent/fusion.json` | Personal presets you want in every repo.               |
-| Project | `.pi/fusion.json`         | Repo-specific presets you want to keep with a project. |
+| Global  | `~/.pi/agent/fusion.yml` | Personal presets you want in every repo.               |
+| Project | `.pi/fusion.yml`         | Repo-specific presets you want to keep with a project. |
 
-Project presets override global presets with the same name. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. This mirrors pi's own preset-extension pattern: global defaults first, project-specific settings second.
+Project presets override global presets with the same name. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.yml`, `.pi/fusion.yaml`, `.pi/fusion.json`, or `.git` directory, so launching pi from a subdirectory still finds repo-level config. This mirrors pi's own preset-extension pattern: global defaults first, project-specific settings second.
 
-pi-fusion does **not** write to `~/.pi/agent/settings.json`. That file is for pi's main settings and package list. A separate `fusion.json` keeps extension-specific data isolated and easier to delete or share.
+pi-fusion does **not** write to `~/.pi/agent/settings.json`. That file is for pi's main settings and package list. A separate `fusion.yml` keeps extension-specific data isolated and easier to delete or share.
 
 ## Create a preset from the TUI
 
@@ -57,8 +57,8 @@ Command behavior:
 | Command                            | Effect                                                        |
 | ---------------------------------- | ------------------------------------------------------------- |
 | `/fusion preset list`              | Lists saved presets and their scope.                          |
-| `/fusion preset save NAME`         | Saves the current settings to `~/.pi/agent/fusion.json`.      |
-| `/fusion preset save-project NAME` | Saves the current settings to `.pi/fusion.json`.              |
+| `/fusion preset save NAME`         | Saves the current settings to `~/.pi/agent/fusion.yml`.      |
+| `/fusion preset save-project NAME` | Saves the current settings to `.pi/fusion.yml`.              |
 | `/fusion preset NAME`              | Loads `NAME` from project presets first, then global presets. |
 
 ## Load a preset at startup
@@ -69,34 +69,29 @@ pi --fusion-preset cheap-planners --fusion-enabled
 
 `--fusion-preset` loads the named settings snapshot during `session_start`. It does not invent a preset if none exists. If the name is wrong, pi-fusion reports the known preset names in the TUI notification area.
 
-## JSON format
+## YAML format
 
-The file is intentionally plain JSON:
+The file is intentionally plain YAML:
 
-```json
-{
-  "version": 1,
-  "presets": {
-    "cheap-planners": {
-      "description": "Gemini Flash workers feeding the current synthesis model",
-      "settings": {
-        "enabled": true,
-        "discoveryEnabled": true,
-        "rewriteEnabled": true,
-        "workerCount": 3,
-        "workerModel": "google-vertex/gemini-3.5-flash",
-        "workerThinking": "off",
-        "plannerToolMode": "all",
-        "synthesisModel": null,
-        "synthesisThinking": "current",
-        "workerOutputBytes": 12000,
-        "contextBytes": 16000,
-        "timeoutMs": 600000,
-        "workers": []
-      }
-    }
-  }
-}
+```yaml
+version: 1
+presets:
+  cheap-planners:
+    description: Gemini Flash workers feeding the current synthesis model
+    settings:
+      enabled: true
+      discoveryEnabled: true
+      rewriteEnabled: true
+      workerCount: 3
+      workerModel: google-vertex/gemini-3.5-flash
+      workerThinking: off
+      plannerToolMode: all
+      synthesisModel: null
+      synthesisThinking: current
+      workerOutputBytes: 12000
+      contextBytes: 16000
+      timeoutMs: 600000
+      workers: []
 ```
 
 Notes:
@@ -112,58 +107,51 @@ Notes:
 
 This is the configuration I expect many people to try first:
 
-```json
-{
-  "version": 1,
-  "presets": {
-    "cheap-planners": {
-      "description": "Fast worker fanout, current model as synthesis",
-      "settings": {
-        "enabled": true,
-        "discoveryEnabled": true,
-        "rewriteEnabled": true,
-        "workerCount": 3,
-        "discoveryModel": "google-vertex/gemini-3.5-flash",
-        "discoveryThinking": "off",
-        "workerModel": "google-vertex/gemini-3.5-flash",
-        "workerThinking": "off",
-        "plannerToolMode": "all",
-        "synthesisModel": null,
-        "synthesisThinking": null,
-        "workerOutputBytes": 12000,
-        "contextBytes": 16000,
-        "timeoutMs": 600000
-      }
-    }
-  }
-}
+```yaml
+version: 1
+presets:
+  cheap-planners:
+    description: Fast worker fanout, current model as synthesis
+    settings:
+      enabled: true
+      discoveryEnabled: true
+      rewriteEnabled: true
+      workerCount: 3
+      discoveryModel: google-vertex/gemini-3.5-flash
+      discoveryThinking: off
+      workerModel: google-vertex/gemini-3.5-flash
+      workerThinking: off
+      plannerToolMode: all
+      synthesisModel: null
+      synthesisThinking: null
+      workerOutputBytes: 12000
+      contextBytes: 16000
+      timeoutMs: 600000
 ```
 
 This keeps the expensive model in the synthesis seat and uses cheaper planners to reduce blind spots. It is not universally better. It is a good starting point when you want to test whether parallel planning buys more than it costs for your own workload.
 
 ## Example: four specialist workers
 
-```json
-{
-  "version": 1,
-  "presets": {
-    "review-panel": {
-      "description": "Mixed worker panel for code review",
-      "settings": {
-        "enabled": true,
-        "workerCount": 4,
-        "workerModel": "google-vertex/gemini-3.5-flash",
-        "workerThinking": "off",
-        "workers": [
-          { "model": "google-vertex/gemini-3.5-flash", "thinking": "off" },
-          { "model": "anthropic/claude-haiku-4-5", "thinking": "low" },
-          { "model": null, "thinking": "medium" },
-          { "model": "openai/gpt-5.2-codex", "thinking": "low" }
-        ]
-      }
-    }
-  }
-}
+```yaml
+version: 1
+presets:
+  review-panel:
+    description: Mixed worker panel for code review
+    settings:
+      enabled: true
+      workerCount: 4
+      workerModel: google-vertex/gemini-3.5-flash
+      workerThinking: off
+      workers:
+        - model: google-vertex/gemini-3.5-flash
+          thinking: off
+        - model: anthropic/claude-haiku-4-5
+          thinking: low
+        - model: null
+          thinking: medium
+        - model: openai/gpt-5.2-codex
+          thinking: low
 ```
 
 Each worker slot inherits `workerModel` and `workerThinking` unless it has an explicit override.
@@ -172,25 +160,25 @@ Each worker slot inherits `workerModel` and `workerThinking` unless it has an ex
 
 ### My preset does not show up
 
-Check that the JSON file has a top-level `presets` object and valid JSON syntax. Malformed `fusion.json` files are ignored instead of crashing the extension. Project presets live at `.pi/fusion.json`; pi-fusion searches upward from the directory where pi is running.
+Check that the config file has a top-level `presets` object and valid YAML or JSON syntax. Malformed `fusion.yml`, `fusion.yaml`, and `fusion.json` files are ignored instead of crashing the extension. Project presets live at `.pi/fusion.yml`; pi-fusion searches upward from the directory where pi is running.
 
 ### I saved a preset but loading it does not change models
 
-The model spec must match a model pi can find, in `provider/model` form. You can set a model back to the current session model from the TUI model picker, or use `null`/omit it in JSON.
+The model spec must match a model pi can find, in `provider/model` form. You can set a model back to the current session model from the TUI model picker, or use `null` or omit the field in config.
 
 ### I want to share a preset with a repo
 
-Use `/fusion preset save-project NAME`. Commit `.pi/fusion.json` if the team should share it. Keep personal API-cost choices in `~/.pi/agent/fusion.json` instead.
+Use `/fusion preset save-project NAME`. Commit `.pi/fusion.yml` if the team should share it. Keep personal API-cost choices in `~/.pi/agent/fusion.yml` instead.
 
 ### I want to remove all fusion presets
 
-Delete `~/.pi/agent/fusion.json` and any project `.pi/fusion.json` files. The extension will recreate files only when you save a preset again.
+Delete `~/.pi/agent/fusion.yml` and any project `.pi/fusion.yml` files. The extension will recreate files only when you save a preset again. If you previously used JSON, delete the matching `fusion.json` files too.
 
 ---
 
 ## Prompt Customization
 
-You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.json` file. You can see and edit them there, or override them on a per-project basis.
+You can fully customize all the prompts used by `pi-fusion`. On first run, default prompts are automatically written to your global `fusion.yml` file. You can see and edit them there, or override them on a per-project basis. Existing `fusion.json` files remain supported.
 
 ### Where prompts are stored
 
@@ -198,33 +186,31 @@ You can fully customize all the prompts used by `pi-fusion`. On first run, defau
 
 | Scope   | Path                      | Use it for                                          |
 | ------- | ------------------------- | --------------------------------------------------- |
-| Global  | `~/.pi/agent/fusion.json` | Default templates used across all projects.         |
-| Project | `.pi/fusion.json`         | Project-specific templates to share with your team. |
+| Global  | `~/.pi/agent/fusion.yml` | Default templates used across all projects.         |
+| Project | `.pi/fusion.yml`         | Project-specific templates to share with your team. |
 
-Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.json` or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `actor` templates.
+Project-level prompts override global prompts per field. pi-fusion searches upward from the current working directory for an existing `.pi/fusion.yml`, `.pi/fusion.yaml`, `.pi/fusion.json`, or `.git` directory, so launching pi from a subdirectory still finds repo-level config. For example, a project file can override only `worker` while keeping your global `discovery`, `rewrite`, and `synthesis` templates.
 
-### JSON format
+### YAML format
 
-Add a `"prompts"` section at the top level of your `fusion.json`:
+Add a `prompts` section at the top level of your `fusion.yml`:
 
-```json
-{
-  "version": 1,
-  "prompts": {
-    "discovery": "...",
-    "rewrite": "...",
-    "worker": "...",
-    "synthesis": "..."
-  },
-  "presets": {
-    "cheap-planners": {
-      "description": "Fast worker fanout, current model as synthesis",
-      "settings": {
-        ...
-      }
-    }
-  }
-}
+```yaml
+version: 1
+prompts:
+  discovery: |
+    ...
+  rewrite: |
+    ...
+  worker: |
+    ...
+  synthesis: |
+    ...
+presets:
+  cheap-planners:
+    description: Fast worker fanout, current model as synthesis
+    settings:
+      workerCount: 3
 ```
 
 ### Available Prompts & Placeholders

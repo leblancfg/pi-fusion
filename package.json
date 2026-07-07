@@ -69,5 +69,8 @@
   "bugs": {
     "url": "https://github.com/leblancfg/pi-fusion/issues"
   },
-  "homepage": "https://leblancfg.com/pi-fusion/"
+  "homepage": "https://leblancfg.com/pi-fusion/",
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
 }
